@@ -43,5 +43,13 @@ describe('downloadFile', () => {
     const dest = join(mkdtempSync(join(tmpdir(), 'fc-dl-')), 'file.bin');
     await expect(downloadFile(`${base}/f`, dest, 'a'.repeat(64), BODY.length, () => {})).rejects.toThrow(ChecksumError);
     expect(existsSync(dest)).toBe(false);
+    expect(existsSync(dest + '.part')).toBe(false);
+  });
+
+  it('throws ChecksumError on expectedBytes mismatch even when sha256 is correct, and keeps no files', async () => {
+    const dest = join(mkdtempSync(join(tmpdir(), 'fc-dl-')), 'file.bin');
+    await expect(downloadFile(`${base}/f`, dest, SHA, BODY.length + 1, () => {})).rejects.toThrow(ChecksumError);
+    expect(existsSync(dest)).toBe(false);
+    expect(existsSync(dest + '.part')).toBe(false);
   });
 });

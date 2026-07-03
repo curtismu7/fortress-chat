@@ -37,6 +37,11 @@ export async function downloadFile(
     for await (const chunk of src) { received += chunk.length; onProgress(received, expectedBytes); yield chunk; }
   };
   await pipeline(Readable.fromWeb(res.body as any), counter, out);
+  const actualBytes = statSync(part).size;
+  if (actualBytes !== expectedBytes) {
+    unlinkSync(part);
+    throw new ChecksumError(`size mismatch: expected ${expectedBytes} bytes, got ${actualBytes}`);
+  }
   const actual = await sha256File(part);
   if (actual !== expectedSha256) { unlinkSync(part); throw new ChecksumError(`sha256 mismatch: ${actual}`); }
   renameSync(part, destPath);
