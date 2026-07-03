@@ -1,0 +1,88 @@
+[
+  {
+    "id": "gemma-3-1b-qat",
+    "family": "gemma3",
+    "displayName": "Gemma 3 1B QAT",
+    "hfRepo": "google/gemma-3-1b-it-qat-q4_0-gguf",
+    "files": [
+      { "name": "gemma-3-1b-it-q4_0.gguf", "sha256": "95e5b8d891cd6a794f66c2a6fb59a41e9562b4660560b854274eceffb628b22a", "bytes": 1003541152 }
+    ],
+    "memoryBytes": 1610612736,
+    "ramTierBytes": 8589934592,
+    "toolCalling": false,
+    "license": "Gemma",
+    "extraArgs": []
+  },
+  {
+    "id": "gemma-3-4b-qat",
+    "family": "gemma3",
+    "displayName": "Gemma 3 4B QAT",
+    "hfRepo": "google/gemma-3-4b-it-qat-q4_0-gguf",
+    "files": [
+      { "name": "gemma-3-4b-it-q4_0.gguf", "sha256": "76aed0a8285b83102f18b5d60e53c70d09eb4e9917a20ce8956bd546452b56e2", "bytes": 3155051328 }
+    ],
+    "memoryBytes": 3758096384,
+    "ramTierBytes": 8589934592,
+    "toolCalling": false,
+    "license": "Gemma",
+    "extraArgs": []
+  },
+  {
+    "id": "gemma-3-12b-qat",
+    "family": "gemma3",
+    "displayName": "Gemma 3 12B QAT",
+    "hfRepo": "google/gemma-3-12b-it-qat-q4_0-gguf",
+    "files": [
+      { "name": "gemma-3-12b-it-q4_0.gguf", "sha256": "dd53172ff3a7b1b16c8fb3d944b87f42a6228ff2de3825b8813ae90d988434cd", "bytes": 8074473920 }
+    ],
+    "memoryBytes": 9663676416,
+    "ramTierBytes": 17179869184,
+    "toolCalling": true,
+    "license": "Gemma",
+    "extraArgs": []
+  },
+  {
+    "id": "gemma-3-27b-qat",
+    "family": "gemma3",
+    "displayName": "Gemma 3 27B QAT",
+    "hfRepo": "google/gemma-3-27b-it-qat-q4_0-gguf",
+    "files": [
+      { "name": "gemma-3-27b-it-q4_0.gguf", "sha256": "7b131f721b95bd06ef4066e18ed2febed15ad6620f61c6eaf37832837ca109fe", "bytes": 17229630496 }
+    ],
+    "memoryBytes": 19327352832,
+    "ramTierBytes": 34359738368,
+    "toolCalling": true,
+    "license": "Gemma",
+    "extraArgs": []
+  },
+  {
+    "id": "gpt-oss-20b",
+    "family": "gpt-oss",
+    "displayName": "gpt-oss-20B",
+    "hfRepo": "ggml-org/gpt-oss-20b-GGUF",
+    "files": [
+      { "name": "gpt-oss-20b-mxfp4.gguf", "sha256": "be37a636aca0fc1aae0d32325f82f6b4d21495f06823b5fbc1898ae0303e9935", "bytes": 12109566560 }
+    ],
+    "memoryBytes": 15032385536,
+    "ramTierBytes": 25769803776,
+    "toolCalling": true,
+    "license": "Apache-2.0",
+    "extraArgs": ["--reasoning-format", "none"]
+  },
+  {
+    "id": "gpt-oss-120b",
+    "family": "gpt-oss",
+    "displayName": "gpt-oss-120B",
+    "hfRepo": "ggml-org/gpt-oss-120b-GGUF",
+    "files": [
+      { "name": "gpt-oss-120b-mxfp4-00001-of-00003.gguf", "sha256": "e2865eb6c1df7b2ffbebf305cd5d9074d5ccc0fe3b862f98d343a46dad1606f9", "bytes": 12980384 },
+      { "name": "gpt-oss-120b-mxfp4-00002-of-00003.gguf", "sha256": "346492f65891fb27cac5c74a8c07626cbfeb4211cd391ec4de37dbbe3109a93b", "bytes": 31738487200 },
+      { "name": "gpt-oss-120b-mxfp4-00003-of-00003.gguf", "sha256": "66dca81040933f5a49177e82c479c51319cefb83bd22dad9f06dad45e25f1463", "bytes": 31635878880 }
+    ],
+    "memoryBytes": 66571993088,
+    "ramTierBytes": 103079215104,
+    "toolCalling": true,
+    "license": "Apache-2.0",
+    "extraArgs": ["--reasoning-format", "none"]
+  }
+]
