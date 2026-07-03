@@ -24,6 +24,20 @@ export function resolveTarget(entry: PolicyEntry, deps: TargetDeps): ResolvedTar
     };
   }
 
-  // OpenRouter branch is added in Task 15.
-  throw new Error(`Unsupported provider: ${entry.provider}`);
+  // OpenRouter: fail-closed — pin US providers, no fallback, deny data collection.
+  if (!deps.openRouterKey) throw new Error('No OpenRouter API key — add your key to use cloud models.');
+  if (entry.hosting.kind !== 'openrouter' || !entry.openrouter) throw new Error('Malformed OpenRouter entry');
+  return {
+    url: 'https://openrouter.ai/api/v1/chat/completions',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${deps.openRouterKey}`,
+      'http-referer': 'https://github.com/curtismuir/fortress-code',
+      'x-title': 'Fortress Code',
+    },
+    bodyExtra: {
+      provider: { only: entry.hosting.usProviders, allow_fallbacks: false, data_collection: 'deny' },
+    },
+    model: entry.openrouter.slug,
+  };
 }

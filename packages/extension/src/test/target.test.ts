@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveTarget } from '../providers/target';
 import { PolicyViolationError, type PolicyEntry } from '@fortress-code/shared';
+import { PolicyViolationError as PVE } from '@fortress-code/shared';
 
 const localEntry: PolicyEntry = {
   id: 'gpt-oss-20b', displayName: 'gpt-oss', provider: 'local', agentCapable: true,
@@ -25,5 +26,31 @@ describe('resolveTarget (local)', () => {
   it('throws PolicyViolationError before building for a disallowed entry', () => {
     const bad = { ...localEntry, approved: false };
     expect(() => resolveTarget(bad, { localEndpoint: 'http://x' })).toThrow(PolicyViolationError);
+  });
+});
+
+const orEntry = {
+  id: 'or-gpt-4o', displayName: 'GPT-4o', provider: 'openrouter', agentCapable: true,
+  origin: { org: 'OpenAI', country: 'US' },
+  hosting: { kind: 'openrouter', usProviders: ['openai', 'azure'] },
+  approved: true, openrouter: { slug: 'openai/gpt-4o', contextLength: 128000 },
+} as const;
+
+describe('resolveTarget (openrouter)', () => {
+  it('builds the fail-closed US-provider-pinned request', () => {
+    const t = resolveTarget(orEntry as any, { openRouterKey: 'sk-or-abc' });
+    expect(t.url).toBe('https://openrouter.ai/api/v1/chat/completions');
+    expect(t.headers.authorization).toBe('Bearer sk-or-abc');
+    expect(t.model).toBe('openai/gpt-4o');
+    expect(t.bodyExtra.provider).toEqual({ only: ['openai', 'azure'], allow_fallbacks: false, data_collection: 'deny' });
+  });
+
+  it('throws if the OpenRouter key is missing', () => {
+    expect(() => resolveTarget(orEntry as any, {})).toThrow(/key/i);
+  });
+
+  it('throws PolicyViolationError for an OpenRouter entry with no US providers', () => {
+    const bad = { ...orEntry, hosting: { kind: 'openrouter', usProviders: [] } };
+    expect(() => resolveTarget(bad as any, { openRouterKey: 'sk-or-abc' })).toThrow(PVE);
   });
 });
