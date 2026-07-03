@@ -4,7 +4,7 @@
   "workspaces": ["packages/*"],
   "engines": { "node": ">=20" },
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build -w @fortress-code/shared && npm run build -w @fortress-code/manager",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"
   }
