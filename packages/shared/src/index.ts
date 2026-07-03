@@ -1,1 +1,1 @@
-export const FORTRESS_CODE = true;
+export * from './messages';
