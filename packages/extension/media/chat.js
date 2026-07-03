@@ -39,7 +39,10 @@ function renderState(status) {
   window.__status = status;
   renderModels(status);
   const setup = $('setup');
-  if (provider === 'local' && !status.binaryInstalled) {
+  if (status.downloadError) {
+    setup.hidden = false;
+    setup.innerHTML = `<b style="color:#e07a7a">⚠ ${esc(status.downloadError)}</b><p>Click the model again to retry.</p>`;
+  } else if (provider === 'local' && !status.binaryInstalled) {
     setup.hidden = false;
     const gb = Math.round(status.ram.totalBytes / 2 ** 30);
     setup.innerHTML = `<b>Welcome to Fortress Code</b><p>This Mac has ${gb} GB RAM. One click installs the local engine.</p><button id="do-setup">Set up local engine</button>`;

@@ -36,6 +36,7 @@ export function createApi(deps: ApiDeps): Server {
   const catalog = loadCatalog();
   let download: DownloadProgress | null = null;
   let downloading = false;
+  let downloadError: string | null = null;
 
   return createServer(async (req, res) => {
     if (req.headers['x-fc-token'] !== deps.token) return send(res, 401, { error: 'unauthorized' });
@@ -53,15 +54,16 @@ export function createApi(deps: ApiDeps): Server {
             ram: { totalBytes: totalRamBytes(), availableBytes: await deps.availableBytes() },
             binaryInstalled: binaryInstalled(),
             downloadedModelIds: catalog.filter(modelDownloaded).map((m) => m.id),
+            downloadError,
           };
           return send(res, 200, body);
         }
         case 'GET /catalog': return send(res, 200, catalog);
         case 'POST /install-binary': {
           if (downloading) return send(res, 409, { error: 'busy' });
-          downloading = true;
+          downloading = true; downloadError = null;
           installBinary((r, t) => { download = { modelId: '__binary__', receivedBytes: r, totalBytes: t }; })
-            .catch(() => {}) // surfaced via binaryInstalled staying false
+            .catch((e) => { downloadError = `Engine install failed: ${e instanceof Error ? e.message : e}`; })
             .finally(() => { download = null; downloading = false; });
           return send(res, 202, {});
         }
@@ -70,7 +72,7 @@ export function createApi(deps: ApiDeps): Server {
           const m = catalog.find((x) => x.id === modelId);
           if (!m) return send(res, 404, { error: 'unknown model' });
           if (downloading) return send(res, 409, { error: 'busy' });
-          downloading = true;
+          downloading = true; downloadError = null;
           (async () => {
             const totalBytes = m.files.reduce((a, f) => a + f.bytes, 0);
             let doneBytes = 0;
@@ -79,7 +81,7 @@ export function createApi(deps: ApiDeps): Server {
                 (r) => { download = { modelId: m.id, receivedBytes: doneBytes + r, totalBytes }; });
               doneBytes += f.bytes;
             }
-          })().catch(() => {}).finally(() => { download = null; downloading = false; });
+          })().catch((e) => { downloadError = `Download failed: ${e instanceof Error ? e.message : e}`; }).finally(() => { download = null; downloading = false; });
           return send(res, 202, {});
         }
         case 'POST /start': {

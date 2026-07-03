@@ -22,6 +22,7 @@ export interface StatusResponse {
   ram: { totalBytes: number; availableBytes: number };
   binaryInstalled: boolean;
   downloadedModelIds: string[];
+  downloadError: string | null; // last download/install failure, surfaced to the UI
 }
 
 export interface ForeignProcess {
