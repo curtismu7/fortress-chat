@@ -60,7 +60,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     try {
       const status: StatusResponse = await this.client.status();
       this.post({ type: 'state', status, selectedId: this.selected?.id ?? null });
-    } catch { /* daemon idle-exited; next send re-spawns */ }
+    } catch {
+      this.client = null; // daemon idle-exited; next action re-spawns
+    }
   }
 
   private async onMessage(m: any): Promise<void> {
@@ -117,6 +119,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private async handleSend(text: string): Promise<void> {
     if (!this.selected) { this.banner('Pick a model first.'); this.post({ type: 'restoreInput', text }); return; }
+    if (!this.client) this.client = await this.connect();
     let target;
     try {
       target = resolveTarget(this.selected, await this.targetDeps());

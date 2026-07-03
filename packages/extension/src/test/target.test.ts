@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveTarget } from '../providers/target';
 import { PolicyViolationError, type PolicyEntry } from '@fortress-code/shared';
-import { PolicyViolationError as PVE } from '@fortress-code/shared';
 
 const localEntry: PolicyEntry = {
   id: 'gpt-oss-20b', displayName: 'gpt-oss', provider: 'local', agentCapable: true,
@@ -51,6 +50,6 @@ describe('resolveTarget (openrouter)', () => {
 
   it('throws PolicyViolationError for an OpenRouter entry with no US providers', () => {
     const bad = { ...orEntry, hosting: { kind: 'openrouter', usProviders: [] } };
-    expect(() => resolveTarget(bad as any, { openRouterKey: 'sk-or-abc' })).toThrow(PVE);
+    expect(() => resolveTarget(bad as any, { openRouterKey: 'sk-or-abc' })).toThrow(PolicyViolationError);
   });
 });

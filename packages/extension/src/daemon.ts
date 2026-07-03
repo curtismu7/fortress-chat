@@ -55,7 +55,11 @@ export async function ensureDaemon(managerEntryPath: string): Promise<DaemonClie
   const existing = readInfo();
   if (existing && (await alive(existing))) return new DaemonClient(existing.port, existing.token);
   if (!existsSync(managerEntryPath)) throw new Error(`manager bundle missing: ${managerEntryPath}`);
-  spawn(process.execPath, [managerEntryPath], { detached: true, stdio: 'ignore' }).unref();
+  spawn(process.execPath, [managerEntryPath], {
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+  }).unref();
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
     const info = readInfo();

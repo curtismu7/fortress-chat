@@ -1,5 +1,5 @@
 import { loadCatalog, type CatalogModel } from './catalog';
-import type { PolicyEntry } from './governance';
+import { isAllowed, type PolicyEntry } from './governance';
 
 const LOCAL_ORG: Record<CatalogModel['family'], string> = {
   gemma3: 'Google',
@@ -69,7 +69,7 @@ const NON_US: { test: RegExp; reason: string }[] = [
 ];
 
 export function explainBlock(slugOrId: string): string | null {
-  if (loadPolicy().some((e) => e.openrouter?.slug === slugOrId || e.id === slugOrId)) return null;
+  if (loadPolicy().some((e) => (e.openrouter?.slug === slugOrId || e.id === slugOrId) && isAllowed(e))) return null;
   for (const n of NON_US) if (n.test.test(slugOrId)) return n.reason;
   return 'This model is not on the US-approved list.';
 }
