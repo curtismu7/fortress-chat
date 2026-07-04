@@ -9,7 +9,7 @@ import { resolveTarget, type ResolvedTarget } from '../providers/target';
 import { resolveDevTarget } from '../providers/dev';
 import { buildInlineEditMessages, stripCodeFences } from '../inlineEdit';
 import { DEV_PRESETS } from '../devPresets';
-import { streamChat } from '../providers/stream';
+import { streamChat, type Usage } from '../providers/stream';
 import { runAgentTurn } from '../agent/loop';
 import { getOpenRouterKey, setOpenRouterKey, getFireworksKey, setFireworksKey } from '../secrets';
 import { buildContextPreamble, parseMentions, capContent, type ChatContext, type AttachedFile } from '../context';
@@ -50,6 +50,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private post(msg: unknown): void { void this.view?.webview.postMessage(msg); }
   private banner(message: string): void { this.post({ type: 'error', message }); }
+
+  private async ensureClient(): Promise<DaemonClient> {
+    if (!this.client) this.client = await this.connect();
+    return this.client;
+  }
 
   private async init(): Promise<void> {
     try {
@@ -163,8 +168,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       switch (m.type) {
         case 'send': return await this.handleSend(String(m.text));
         case 'cancel': this.generating?.abort(); return;
-        case 'newChat': this.store.newChat(); this.post({ type: 'history', messages: [] }); this.postChats(); return;
-        case 'switchChat': this.store.switchTo(String(m.id)); this.post({ type: 'history', messages: this.store.active().messages }); this.postChats(); return;
+        case 'newChat': this.generating?.abort(); this.store.newChat(); this.post({ type: 'history', messages: [] }); this.postChats(); return;
+        case 'switchChat': this.generating?.abort(); this.store.switchTo(String(m.id)); this.post({ type: 'history', messages: this.store.active().messages }); this.postChats(); return;
         case 'regenerate': return await this.regenerate();
         case 'editLoad': {
           const msgs = this.store.active().messages;
@@ -178,9 +183,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'setOpenRouterKey': await setOpenRouterKey(this.context.secrets, String(m.key)); this.post({ type: 'openRouterKeySet', set: true }); return;
         case 'setFireworksKey': await setFireworksKey(this.context.secrets, String(m.key)); await this.postDev(); return;
         case 'selectDevModel': this.devModel = String(m.slug) || null; this.selected = null; this.postContextWindow(); return;
-        case 'downloadModel': await this.client?.download(String(m.catalogId)); return;
-        case 'installBinary': await this.client?.installBinary(); return;
-        case 'killForeign': await this.client?.foreignKill(m.pids); return;
+        case 'downloadModel': await (await this.ensureClient()).download(String(m.catalogId)); return;
+        case 'installBinary': await (await this.ensureClient()).installBinary(); return;
+        case 'killForeign': await (await this.ensureClient()).foreignKill(m.pids); return;
         case 'excludeContext': this.excluded.add(String(m.id)); void this.postChips(); return;
         case 'insertCode': {
           const ed = vscode.window.activeTextEditor;
@@ -270,6 +275,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleSend(text: string): Promise<void> {
+    if (this.generating) { this.banner('Still generating — press Stop first.'); this.post({ type: 'restoreInput', text }); return; }
     let target;
     try {
       target = await this.currentTarget();
@@ -285,6 +291,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     session.addUser(text);
     this.post({ type: 'history', messages: session.messages });
     this.generating = new AbortController();
+    let usage: Usage | null = null;
     try {
       if (this.agentMode) {
         await runAgentTurn(target, session, sys, (step) => this.post({ type: 'agentStep', step }), this.generating.signal);
@@ -294,12 +301,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           (t) => this.post({ type: 'reasoning', text: t }));
         session.addAssistant(splitThink(r.content).content || '(no reply)');
         this.post({ type: 'reasoningDone' });
-        if (r.usage) this.post({ type: 'usage', usage: r.usage });
+        usage = r.usage;
       }
       this.store.touchTitle();
       this.store.save();
       this.post({ type: 'history', messages: session.messages });
       this.postChats();
+      if (usage) this.post({ type: 'usage', usage });
     } catch (e) {
       session.messages.length = preTurnLen; // error hygiene: remove user msg + any tool exchange from the failed turn
       this.store.save();

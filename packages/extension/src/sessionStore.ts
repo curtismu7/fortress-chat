@@ -27,9 +27,9 @@ export class SessionStore {
   }
   switchTo(id: string): void { if (this.sessions.has(id)) { this.activeId = id; this.save(); } }
   touchTitle(): void {
-    const first = this.active().messages.find((m) => m.role === 'user');
+    const first = this.active().messages.find((m) => m.role === 'user' && m.content.trim());
     if (first && (this.titles.get(this.activeId) || 'New chat') === 'New chat') {
-      this.titles.set(this.activeId, first.content.slice(0, 40));
+      this.titles.set(this.activeId, first.content.trim().slice(0, 40));
     }
   }
   save(): void {

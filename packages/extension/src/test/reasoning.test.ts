@@ -16,4 +16,10 @@ describe('splitThink', () => {
   it('passes plain content through', () => {
     expect(splitThink('just text')).toEqual({ content: 'just text', reasoning: '' });
   });
+  it('strips a stray orphan close tag', () => {
+    expect(splitThink('hello</think>world').content).toBe('helloworld');
+  });
+  it('never leaks a literal think tag from nested blocks', () => {
+    expect(splitThink('<think>a<think>b</think>c</think>Answer').content).not.toMatch(/think/);
+  });
 });

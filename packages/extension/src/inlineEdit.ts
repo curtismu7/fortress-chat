@@ -11,6 +11,8 @@ export function buildInlineEditMessages(code: string, instruction: string, langu
 
 export function stripCodeFences(text: string): string {
   const t = String(text).trim();
-  const m = t.match(/^```[^\n]*\n([\s\S]*?)\n?```$/);
-  return (m ? m[1] : t).trim();
+  // If the model wrapped the code in a fence (possibly with surrounding prose or
+  // multiple blocks), take the FIRST fenced block's contents. Otherwise return as-is.
+  const m = t.match(/```[^\n]*\n([\s\S]*?)```/);
+  return (m ? m[1].replace(/\n+$/, '') : t).trim();
 }

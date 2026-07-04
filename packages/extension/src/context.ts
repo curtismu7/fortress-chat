@@ -4,15 +4,20 @@ export interface ChatContext { file: AttachedFile | null; selection: SelectionCt
 
 export function parseMentions(input: string): string[] {
   const out: string[] = [];
-  const re = /@([^\s@]+)/g;
+  // Require @ at start-of-string or after whitespace so emails (a@b.com) and
+  // decorators mid-word are not misread as file mentions.
+  const re = /(?:^|\s)@([^\s@]+)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(input))) if (!out.includes(m[1])) out.push(m[1]);
   return out;
 }
 
 export function capContent(text: string, maxBytes = 30_000): { content: string; truncated: boolean } {
-  if (Buffer.byteLength(text, 'utf8') <= maxBytes) return { content: text, truncated: false };
-  return { content: text.slice(0, maxBytes) + '\n…(truncated)', truncated: true };
+  const buf = Buffer.from(text, 'utf8');
+  if (buf.length <= maxBytes) return { content: text, truncated: false };
+  // Truncate on a byte boundary, dropping a trailing partial multibyte char.
+  const head = buf.subarray(0, maxBytes).toString('utf8').replace(/�+$/, '');
+  return { content: head + '\n…(truncated)', truncated: true };
 }
 
 function fileBlock(label: string, f: AttachedFile): string {

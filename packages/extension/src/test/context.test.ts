@@ -6,6 +6,7 @@ describe('parseMentions', () => {
     expect(parseMentions('look at @src/a.ts and @src/a.ts and @b.js please')).toEqual(['src/a.ts', 'b.js']);
   });
   it('returns [] when none', () => expect(parseMentions('no mentions here')).toEqual([]));
+  it('does not treat an email as a mention', () => expect(parseMentions('mail me at a@b.com')).toEqual([]));
 });
 
 describe('capContent', () => {
@@ -17,6 +18,11 @@ describe('capContent', () => {
     expect(r.truncated).toBe(true);
     expect(r.content.length).toBeLessThanOrEqual(10 + 20); // + a short marker
     expect(r.content).toContain('truncated');
+  });
+  it('caps by BYTES for multibyte content', () => {
+    const r = capContent('あ'.repeat(20000), 30000); // 3 bytes each
+    expect(r.truncated).toBe(true);
+    expect(Buffer.byteLength(r.content, 'utf8')).toBeLessThanOrEqual(30000 + 20);
   });
 });
 

@@ -116,7 +116,7 @@ window.addEventListener('message', (e) => {
   if (m.type === 'error') { $('banner-text').textContent = m.message; $('banner').hidden = false; }
   if (m.type === 'token') appendToken(m.text);
   if (m.type === 'context') {
-    $('chips').innerHTML = (m.chips || []).map((c) => `<span class="chip">${esc(c.label)}<button data-chip="${c.id}">×</button></span>`).join('');
+    $('chips').innerHTML = (m.chips || []).map((c) => `<span class="chip">${esc(c.label)}<button data-chip="${esc(c.id)}">×</button></span>`).join('');
     document.querySelectorAll('#chips button').forEach((b) => b.onclick = () => vscode.postMessage({ type: 'excludeContext', id: b.dataset.chip }));
   }
   if (m.type === 'agentStep') { $('steps').hidden = false; $('steps').innerHTML += `<div>${esc(m.step)}</div>`; }
@@ -213,7 +213,7 @@ $('messages').addEventListener('click', (e) => {
   }
   if (e.target.closest('.regen')) { turnReasoning = ''; vscode.postMessage({ type: 'regenerate' }); return; }
   const em = e.target.closest('.editmsg');
-  if (em) { vscode.postMessage({ type: 'editLoad', index: +em.dataset.idx }); return; }
+  if (em) { turnReasoning = ''; vscode.postMessage({ type: 'editLoad', index: +em.dataset.idx }); return; }
 });
 $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('send').click(); } });
 
