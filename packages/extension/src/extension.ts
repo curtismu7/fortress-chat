@@ -10,6 +10,19 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewViewProvider('fortressCode.chat', provider),
     vscode.commands.registerCommand('fortress-code.openChat', () =>
       vscode.commands.executeCommand('fortressCode.chat.focus')),
+    vscode.commands.registerCommand('fortress-code.toggleDevMode', async () => {
+      const on = !context.globalState.get<boolean>('fortressCode.devMode', false);
+      if (on) {
+        const ok = await vscode.window.showWarningMessage(
+          'Developer Mode bypasses the US-only governance and lets you use any Fireworks model (including non-US). Continue?',
+          { modal: true }, 'Enable',
+        );
+        if (ok !== 'Enable') return;
+      }
+      await context.globalState.update('fortressCode.devMode', on);
+      provider.setDevMode(on);
+      void vscode.window.showInformationMessage(`Fortress Code Developer Mode ${on ? 'ON — governance BYPASSED' : 'off'}`);
+    }),
   );
 }
 

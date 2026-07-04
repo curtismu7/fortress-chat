@@ -19,6 +19,16 @@
     <div id="setup" hidden></div>
   </section>
 
+  <section id="dev" hidden>
+    <div class="devbanner">⚠ Developer mode — US-only governance is BYPASSED</div>
+    <div id="fw-key-row"><input id="fw-key" type="password" placeholder="Fireworks API key (stored in your OS keychain)" /><button id="fw-key-save">Save</button></div>
+    <div class="devrow">
+      <select id="dev-preset"></select>
+      <input id="dev-slug" placeholder="or paste accounts/fireworks/models/…" />
+      <button id="dev-use">Use</button>
+    </div>
+  </section>
+
   <header id="chat-head" hidden>
     <span id="active-model"></span>
     <label><input type="checkbox" id="agent-toggle" /> Agent</label>

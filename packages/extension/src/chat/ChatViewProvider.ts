@@ -5,9 +5,11 @@ import { loadPolicy, localEntries, explainBlock, type PolicyEntry, type StatusRe
 import { DaemonClient } from '../daemon';
 import { Session } from './session';
 import { resolveTarget } from '../providers/target';
+import { resolveDevTarget } from '../providers/dev';
+import { DEV_PRESETS } from '../devPresets';
 import { streamChat } from '../providers/stream';
 import { runAgentTurn } from '../agent/loop';
-import { getOpenRouterKey, setOpenRouterKey } from '../secrets';
+import { getOpenRouterKey, setOpenRouterKey, getFireworksKey, setFireworksKey } from '../secrets';
 
 const SYSTEM_PROMPT = 'You are Fortress Code, a helpful local coding assistant.';
 
@@ -18,10 +20,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private generating: AbortController | null = null;
   private agentMode = false;
   private selected: PolicyEntry | null = null;
+  private devMode = false;
+  private devModel: string | null = null;
   private poller: ReturnType<typeof setInterval> | null = null;
 
   constructor(private context: vscode.ExtensionContext, private connect: () => Promise<DaemonClient>) {
     this.session = Session.load(context.workspaceState);
+    this.devMode = context.globalState.get<boolean>('fortressCode.devMode', false);
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -46,6 +51,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.client = await this.connect();
       this.post({ type: 'policy', local: localEntries(), openrouter: loadPolicy().filter((e) => e.provider === 'openrouter') });
       this.post({ type: 'openRouterKeySet', set: !!(await getOpenRouterKey(this.context.secrets)) });
+      await this.postDev();
       this.post({ type: 'history', messages: this.session.messages });
       this.poller = setInterval(() => void this.pushStatus(), 2000);
       this.context.subscriptions.push({ dispose: () => this.poller && clearInterval(this.poller) });
@@ -53,6 +59,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     } catch (e) {
       this.banner(`Could not start the Fortress Code daemon: ${e}`);
     }
+  }
+
+  setDevMode(on: boolean): void {
+    this.devMode = on;
+    if (!on) this.devModel = null;
+    void this.postDev();
+  }
+
+  private async postDev(): Promise<void> {
+    this.post({ type: 'devMode', on: this.devMode, presets: DEV_PRESETS, fireworksKeySet: !!(await getFireworksKey(this.context.secrets)) });
   }
 
   private async pushStatus(): Promise<void> {
@@ -75,6 +91,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'selectModel': return await this.selectModel(String(m.id));
         case 'addModel': return this.handleAddModel(String(m.slug));
         case 'setOpenRouterKey': await setOpenRouterKey(this.context.secrets, String(m.key)); this.post({ type: 'openRouterKeySet', set: true }); return;
+        case 'setFireworksKey': await setFireworksKey(this.context.secrets, String(m.key)); await this.postDev(); return;
+        case 'selectDevModel': this.devModel = String(m.slug) || null; this.selected = null; return;
         case 'downloadModel': await this.client?.download(String(m.catalogId)); return;
         case 'installBinary': await this.client?.installBinary(); return;
         case 'killForeign': await this.client?.foreignKill(m.pids); return;
@@ -118,11 +136,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleSend(text: string): Promise<void> {
-    if (!this.selected) { this.banner('Pick a model first.'); this.post({ type: 'restoreInput', text }); return; }
-    if (!this.client) this.client = await this.connect();
     let target;
     try {
-      target = resolveTarget(this.selected, await this.targetDeps());
+      if (this.devMode && this.devModel) {
+        const key = await getFireworksKey(this.context.secrets);
+        target = resolveDevTarget(this.devModel, key ?? '');
+      } else if (this.selected) {
+        if (!this.client) this.client = await this.connect();
+        target = resolveTarget(this.selected, await this.targetDeps());
+      } else {
+        this.banner('Pick a model first.'); this.post({ type: 'restoreInput', text }); return;
+      }
     } catch (e) {
       this.banner(String(e instanceof Error ? e.message : e));
       this.post({ type: 'restoreInput', text });

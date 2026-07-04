@@ -41,6 +41,17 @@
       {
         "command": "fortress-code.openChat",
         "title": "Fortress Code: Open Chat"
+      },
+      {
+        "command": "fortress-code.toggleDevMode",
+        "title": "Fortress Code: Toggle Developer Mode"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "fortress-code.toggleDevMode",
+        "key": "ctrl+alt+m",
+        "mac": "ctrl+alt+m"
       }
     ]
   },

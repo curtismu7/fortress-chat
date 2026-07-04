@@ -92,6 +92,13 @@ window.addEventListener('message', (e) => {
   if (m.type === 'error') { $('banner-text').textContent = m.message; $('banner').hidden = false; }
   if (m.type === 'token') appendToken(m.text);
   if (m.type === 'agentStep') { $('steps').hidden = false; $('steps').innerHTML += `<div>${esc(m.step)}</div>`; }
+  if (m.type === 'devMode') {
+    window.__dev = m.on;
+    $('dev').hidden = !m.on;
+    $('fw-key-row').hidden = m.fireworksKeySet;
+    $('dev-preset').innerHTML = '<option value="">— pick a Fireworks model —</option>' +
+      (m.presets || []).map((p) => `<option value="${p.slug}">${esc(p.label)}</option>`).join('');
+  }
 });
 
 function renderHistory(messages) {
@@ -126,5 +133,14 @@ $('new-chat').onclick = () => vscode.postMessage({ type: 'newChat' });
 $('agent-toggle').onchange = (e) => vscode.postMessage({ type: 'agentToggle', on: e.target.checked });
 $('banner-close').onclick = () => { $('banner').hidden = true; };
 $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('send').click(); } });
+
+$('fw-key-save').onclick = () => { const k = $('fw-key').value.trim(); if (k) vscode.postMessage({ type: 'setFireworksKey', key: k }); };
+$('dev-use').onclick = () => {
+  const slug = ($('dev-slug').value.trim() || $('dev-preset').value || '').trim();
+  if (!slug) return;
+  vscode.postMessage({ type: 'selectDevModel', slug });
+  $('chat-head').hidden = false; $('composer').hidden = false; $('send').disabled = false;
+  $('active-model').innerHTML = '<span class="dev-active">⚠ DEV · ' + esc(slug) + '</span>';
+};
 
 setProvider('local');
