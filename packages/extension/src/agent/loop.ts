@@ -3,12 +3,13 @@ import type { ChatMessage, ToolCall } from '@fortress-code/shared';
 import { TOOL_SCHEMAS, executeTool } from './tools';
 import type { Session } from '../chat/session';
 import type { ResolvedTarget } from '../providers/target';
+import type { Usage } from '../providers/stream';
 
 export const MAX_ITERATIONS = 10;
 
 export async function completeOnce(
   target: ResolvedTarget, messages: ChatMessage[], signal: AbortSignal,
-): Promise<{ content: string; toolCalls: ToolCall[] }> {
+): Promise<{ content: string; toolCalls: ToolCall[]; usage?: Usage }> {
   const res = await fetch(target.url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...target.headers },
@@ -16,8 +17,10 @@ export async function completeOnce(
     signal,
   });
   if (!res.ok) throw new Error(`Model server HTTP ${res.status}: ${await res.text().catch(() => '')}`);
-  const msg = (await res.json())?.choices?.[0]?.message ?? {};
-  return { content: typeof msg.content === 'string' ? msg.content : '', toolCalls: Array.isArray(msg.tool_calls) ? msg.tool_calls : [] };
+  const json = await res.json();
+  const msg = json?.choices?.[0]?.message ?? {};
+  const usage = json?.usage ? { promptTokens: json.usage.prompt_tokens ?? 0, completionTokens: json.usage.completion_tokens ?? 0 } : undefined;
+  return { content: typeof msg.content === 'string' ? msg.content : '', toolCalls: Array.isArray(msg.tool_calls) ? msg.tool_calls : [], usage };
 }
 
 export async function runAgentTurn(

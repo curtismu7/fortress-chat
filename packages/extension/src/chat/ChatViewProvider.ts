@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadPolicy, localEntries, explainBlock, type PolicyEntry, type StatusResponse } from '@fortress-code/shared';
 import { DaemonClient } from '../daemon';
-import { Session } from './session';
+import { SessionStore } from '../sessionStore';
+import { splitThink } from '../reasoning';
 import { resolveTarget } from '../providers/target';
 import { resolveDevTarget } from '../providers/dev';
 import { DEV_PRESETS } from '../devPresets';
@@ -18,7 +19,7 @@ const SYSTEM_PROMPT = 'You are Fortress Code, a helpful local coding assistant.'
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | null = null;
   private client: DaemonClient | null = null;
-  private session: Session;
+  private store: SessionStore;
   private generating: AbortController | null = null;
   private agentMode = false;
   private selected: PolicyEntry | null = null;
@@ -28,7 +29,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private poller: ReturnType<typeof setInterval> | null = null;
 
   constructor(private context: vscode.ExtensionContext, private connect: () => Promise<DaemonClient>) {
-    this.session = Session.load(context.workspaceState);
+    this.store = SessionStore.load(context.workspaceState);
     this.devMode = context.globalState.get<boolean>('fortressCode.devMode', false);
   }
 
@@ -55,7 +56,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.post({ type: 'policy', local: localEntries(), openrouter: loadPolicy().filter((e) => e.provider === 'openrouter') });
       this.post({ type: 'openRouterKeySet', set: !!(await getOpenRouterKey(this.context.secrets)) });
       await this.postDev();
-      this.post({ type: 'history', messages: this.session.messages });
+      this.post({ type: 'history', messages: this.store.active().messages });
+      this.postChats();
       this.poller = setInterval(() => void this.pushStatus(), 2000);
       this.context.subscriptions.push({ dispose: () => this.poller && clearInterval(this.poller) });
       await this.pushStatus();
@@ -78,6 +80,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private async postDev(): Promise<void> {
     this.post({ type: 'devMode', on: this.devMode, presets: DEV_PRESETS, fireworksKeySet: !!(await getFireworksKey(this.context.secrets)) });
+  }
+
+  private postChats(): void {
+    this.post({ type: 'chats', metas: this.store.metas(), activeId: this.store.activeId });
+  }
+
+  private postContextWindow(): void {
+    let tokens = 8192;
+    if (this.selected?.provider === 'openrouter') tokens = this.selected.openrouter?.contextLength ?? 8192;
+    this.post({ type: 'contextWindow', tokens });
+  }
+
+  private async regenerate(): Promise<void> {
+    const msgs = this.store.active().messages;
+    while (msgs.length && msgs[msgs.length - 1].role !== 'user') msgs.pop();
+    const last = msgs[msgs.length - 1];
+    if (!last || last.role !== 'user') return;
+    const text = last.content;
+    msgs.pop(); // handleSend re-adds it
+    this.store.save();
+    this.post({ type: 'history', messages: msgs });
+    await this.handleSend(text);
   }
 
   private async collectContext(userText: string): Promise<ChatContext> {
@@ -138,13 +162,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       switch (m.type) {
         case 'send': return await this.handleSend(String(m.text));
         case 'cancel': this.generating?.abort(); return;
-        case 'newChat': this.session.clear(); this.session.save(this.context.workspaceState); this.post({ type: 'history', messages: [] }); return;
+        case 'newChat': this.store.newChat(); this.post({ type: 'history', messages: [] }); this.postChats(); return;
+        case 'switchChat': this.store.switchTo(String(m.id)); this.post({ type: 'history', messages: this.store.active().messages }); this.postChats(); return;
+        case 'regenerate': return await this.regenerate();
+        case 'editLoad': {
+          const msgs = this.store.active().messages;
+          const um = msgs[Number(m.index)];
+          if (um && um.role === 'user') { msgs.length = Number(m.index); this.store.save(); this.post({ type: 'history', messages: msgs }); this.post({ type: 'restoreInput', text: um.content }); }
+          return;
+        }
         case 'agentToggle': this.agentMode = !!m.on; return;
         case 'selectModel': return await this.selectModel(String(m.id));
         case 'addModel': return this.handleAddModel(String(m.slug));
         case 'setOpenRouterKey': await setOpenRouterKey(this.context.secrets, String(m.key)); this.post({ type: 'openRouterKeySet', set: true }); return;
         case 'setFireworksKey': await setFireworksKey(this.context.secrets, String(m.key)); await this.postDev(); return;
-        case 'selectDevModel': this.devModel = String(m.slug) || null; this.selected = null; return;
+        case 'selectDevModel': this.devModel = String(m.slug) || null; this.selected = null; this.postContextWindow(); return;
         case 'downloadModel': await this.client?.download(String(m.catalogId)); return;
         case 'installBinary': await this.client?.installBinary(); return;
         case 'killForeign': await this.client?.foreignKill(m.pids); return;
@@ -187,6 +219,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
     }
     await this.pushStatus();
+    this.postContextWindow();
   }
 
   private handleAddModel(slug: string): void {
@@ -234,25 +267,32 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.post({ type: 'restoreInput', text });
       return;
     }
+    const session = this.store.active();
     const preamble = buildContextPreamble(await this.collectContext(text));
     const sys = SYSTEM_PROMPT + (preamble ? '\n\n---\n' + preamble : '');
-    const preTurnLen = this.session.messages.length;
-    this.session.addUser(text);
-    this.post({ type: 'history', messages: this.session.messages });
+    const preTurnLen = session.messages.length;
+    session.addUser(text);
+    this.post({ type: 'history', messages: session.messages });
     this.generating = new AbortController();
     try {
       if (this.agentMode) {
-        await runAgentTurn(target, this.session, sys, (step) => this.post({ type: 'agentStep', step }), this.generating.signal);
+        await runAgentTurn(target, session, sys, (step) => this.post({ type: 'agentStep', step }), this.generating.signal);
       } else {
-        const full = await streamChat(target, this.session.toRequestMessages(sys), (t) => this.post({ type: 'token', text: t }), this.generating.signal);
-        this.session.addAssistant(full);
+        const r = await streamChat(target, session.toRequestMessages(sys),
+          (t) => this.post({ type: 'token', text: t }), this.generating.signal,
+          (t) => this.post({ type: 'reasoning', text: t }));
+        session.addAssistant(splitThink(r.content).content || '(no reply)');
+        this.post({ type: 'reasoningDone' });
+        if (r.usage) this.post({ type: 'usage', usage: r.usage });
       }
-      this.session.save(this.context.workspaceState);
-      this.post({ type: 'history', messages: this.session.messages });
+      this.store.touchTitle();
+      this.store.save();
+      this.post({ type: 'history', messages: session.messages });
+      this.postChats();
     } catch (e) {
-      this.session.messages.length = preTurnLen; // error hygiene: remove user msg + any tool exchange from the failed turn
-      this.session.save(this.context.workspaceState);
-      this.post({ type: 'history', messages: this.session.messages });
+      session.messages.length = preTurnLen; // error hygiene: remove user msg + any tool exchange from the failed turn
+      this.store.save();
+      this.post({ type: 'history', messages: session.messages });
       this.post({ type: 'restoreInput', text });
       this.banner(String(e instanceof Error ? e.message : e));
     } finally {

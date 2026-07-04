@@ -23,7 +23,7 @@ describe('streamChat', () => {
   it('concatenates SSE deltas and reports tokens', async () => {
     const tokens: string[] = [];
     const full = await streamChat(target, [{ role: 'user', content: 'hi' }], (t) => tokens.push(t), new AbortController().signal);
-    expect(full).toBe('Hello');
+    expect(full.content).toBe('Hello');
     expect(tokens).toEqual(['Hel', 'lo']);
   });
 
