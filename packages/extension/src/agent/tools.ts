@@ -31,7 +31,7 @@ function walk(dir: string, root: string, acc: string[], limit: number): void {
   }
 }
 
-async function editFileWithApproval(abs: string, content: string, rel: string): Promise<string> {
+export async function editFileWithApproval(abs: string, content: string, rel: string): Promise<string> {
   const uri = vscode.Uri.file(abs);
   let original = '';
   try { original = readFileSync(abs, 'utf8'); } catch { /* new file */ }

@@ -34,3 +34,14 @@ footer { display: flex; gap: 6px; padding: 8px; } #input { flex: 1; resize: none
 #fw-key-row, .devrow { display: flex; gap: 4px; margin-bottom: 6px; }
 #fw-key, #dev-slug { flex: 1; }
 .dev-active { color: #e88; }
+#composer { flex-wrap: wrap; }
+#chips { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; margin-bottom: 4px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); border-radius: 10px; padding: 1px 7px; font-size: 10.5px; }
+.chip button { background: none; border: none; color: inherit; cursor: pointer; padding: 0 0 0 2px; font-size: 11px; }
+.codeblock { border: 1px solid var(--vscode-widget-border, #333); border-radius: 6px; margin: 6px 0; overflow: hidden; }
+.cb-head { display: flex; justify-content: space-between; align-items: center; background: var(--vscode-editorWidget-background); padding: 3px 8px; font-size: 10.5px; }
+.cb-btns button { background: none; border: 1px solid var(--vscode-widget-border, #444); color: inherit; border-radius: 3px; font-size: 10px; padding: 1px 6px; margin-left: 3px; cursor: pointer; }
+.codeblock pre { margin: 0; padding: 8px; overflow-x: auto; background: var(--vscode-textCodeBlock-background, #1e1e1e); }
+.codeblock code, code.inl { font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; }
+code.inl { background: var(--vscode-textCodeBlock-background, #2a2a2a); padding: 0 3px; border-radius: 3px; }
+.md { white-space: normal; }

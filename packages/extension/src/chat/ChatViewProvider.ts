@@ -10,6 +10,8 @@ import { DEV_PRESETS } from '../devPresets';
 import { streamChat } from '../providers/stream';
 import { runAgentTurn } from '../agent/loop';
 import { getOpenRouterKey, setOpenRouterKey, getFireworksKey, setFireworksKey } from '../secrets';
+import { buildContextPreamble, parseMentions, capContent, type ChatContext, type AttachedFile } from '../context';
+import { resolveInWorkspace, editFileWithApproval } from '../agent/tools';
 
 const SYSTEM_PROMPT = 'You are Fortress Code, a helpful local coding assistant.';
 
@@ -22,6 +24,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private selected: PolicyEntry | null = null;
   private devMode = false;
   private devModel: string | null = null;
+  private excluded = new Set<string>();
   private poller: ReturnType<typeof setInterval> | null = null;
 
   constructor(private context: vscode.ExtensionContext, private connect: () => Promise<DaemonClient>) {
@@ -56,6 +59,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.poller = setInterval(() => void this.pushStatus(), 2000);
       this.context.subscriptions.push({ dispose: () => this.poller && clearInterval(this.poller) });
       await this.pushStatus();
+      const refresh = () => void this.postChips();
+      this.context.subscriptions.push(
+        vscode.window.onDidChangeActiveTextEditor(refresh),
+        vscode.window.onDidChangeTextEditorSelection(refresh),
+      );
+      await this.postChips();
     } catch (e) {
       this.banner(`Could not start the Fortress Code daemon: ${e}`);
     }
@@ -69,6 +78,49 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private async postDev(): Promise<void> {
     this.post({ type: 'devMode', on: this.devMode, presets: DEV_PRESETS, fireworksKeySet: !!(await getFireworksKey(this.context.secrets)) });
+  }
+
+  private async collectContext(userText: string): Promise<ChatContext> {
+    const ed = vscode.window.activeTextEditor;
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const diagsFor = (uri: vscode.Uri) => vscode.languages.getDiagnostics(uri).map((d) =>
+      `${d.range.start.line + 1}:${d.range.start.character + 1} ${vscode.DiagnosticSeverity[d.severity].toLowerCase()} ${d.message}`);
+    let file: AttachedFile | null = null;
+    let selection: ChatContext['selection'] = null;
+    if (ed) {
+      const doc = ed.document;
+      const relPath = vscode.workspace.asRelativePath(doc.fileName);
+      const fileId = 'file:' + relPath;
+      if (!this.excluded.has(fileId)) {
+        const cap = capContent(doc.getText());
+        file = { id: fileId, relPath, language: doc.languageId, content: cap.content, truncated: cap.truncated, diagnostics: diagsFor(doc.uri) };
+      }
+      if (!ed.selection.isEmpty) {
+        const selId = 'sel:' + relPath;
+        if (!this.excluded.has(selId)) {
+          selection = { id: selId, relPath, startLine: ed.selection.start.line + 1, endLine: ed.selection.end.line + 1, text: doc.getText(ed.selection) };
+        }
+      }
+    }
+    const mentions: AttachedFile[] = [];
+    if (root) for (const mrel of parseMentions(userText)) {
+      const mid = 'mention:' + mrel;
+      if (this.excluded.has(mid)) continue;
+      try {
+        const abs = resolveInWorkspace(root, mrel);
+        const cap = capContent(readFileSync(abs, 'utf8'));
+        mentions.push({ id: mid, relPath: mrel, language: mrel.split('.').pop() ?? '', content: cap.content, truncated: cap.truncated, diagnostics: [] });
+      } catch { /* skip unreadable/escaping mention */ }
+    }
+    return { file, selection, mentions };
+  }
+
+  private async postChips(): Promise<void> {
+    const ctx = await this.collectContext('');
+    const chips: { id: string; label: string; kind: string }[] = [];
+    if (ctx.file) chips.push({ id: ctx.file.id, label: '📄 ' + ctx.file.relPath, kind: 'file' });
+    if (ctx.selection) chips.push({ id: ctx.selection.id, label: `✂ ${ctx.selection.relPath} L${ctx.selection.startLine}-${ctx.selection.endLine}`, kind: 'sel' });
+    this.post({ type: 'context', chips });
   }
 
   private async pushStatus(): Promise<void> {
@@ -96,6 +148,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'downloadModel': await this.client?.download(String(m.catalogId)); return;
         case 'installBinary': await this.client?.installBinary(); return;
         case 'killForeign': await this.client?.foreignKill(m.pids); return;
+        case 'excludeContext': this.excluded.add(String(m.id)); void this.postChips(); return;
+        case 'insertCode': {
+          const ed = vscode.window.activeTextEditor;
+          if (!ed) { this.banner('Open a file to insert into.'); return; }
+          await ed.edit((b) => b.insert(ed.selection.active, String(m.code)));
+          return;
+        }
+        case 'applyCode': {
+          const ed = vscode.window.activeTextEditor;
+          if (!ed) { this.banner('Open a file to apply into.'); return; }
+          const rel = vscode.workspace.asRelativePath(ed.document.fileName);
+          const next = ed.selection.isEmpty
+            ? String(m.code)
+            : ed.document.getText().slice(0, ed.document.offsetAt(ed.selection.start)) + String(m.code) + ed.document.getText().slice(ed.document.offsetAt(ed.selection.end));
+          await editFileWithApproval(ed.document.fileName, next, rel);
+          return;
+        }
       }
     } catch (e) {
       this.banner(String(e));
@@ -152,15 +221,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.post({ type: 'restoreInput', text });
       return;
     }
+    const preamble = buildContextPreamble(await this.collectContext(text));
+    const sys = SYSTEM_PROMPT + (preamble ? '\n\n---\n' + preamble : '');
     const preTurnLen = this.session.messages.length;
     this.session.addUser(text);
     this.post({ type: 'history', messages: this.session.messages });
     this.generating = new AbortController();
     try {
       if (this.agentMode) {
-        await runAgentTurn(target, this.session, SYSTEM_PROMPT, (step) => this.post({ type: 'agentStep', step }), this.generating.signal);
+        await runAgentTurn(target, this.session, sys, (step) => this.post({ type: 'agentStep', step }), this.generating.signal);
       } else {
-        const full = await streamChat(target, this.session.toRequestMessages(SYSTEM_PROMPT), (t) => this.post({ type: 'token', text: t }), this.generating.signal);
+        const full = await streamChat(target, this.session.toRequestMessages(sys), (t) => this.post({ type: 'token', text: t }), this.generating.signal);
         this.session.addAssistant(full);
       }
       this.session.save(this.context.workspaceState);

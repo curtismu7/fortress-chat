@@ -7,6 +7,30 @@ let selectedId = null;
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
+let cbCodes = [];
+function renderInline(t) {
+  return esc(t)
+    .replace(/`([^`]+)`/g, '<code class="inl">$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/\n/g, '<br>');
+}
+function renderMarkdown(text) {
+  const parts = String(text).split('```');
+  let out = '';
+  for (let i = 0; i < parts.length; i++) {
+    if (i % 2 === 1) {
+      const nl = parts[i].indexOf('\n');
+      const lang = nl >= 0 ? parts[i].slice(0, nl).trim() : '';
+      const code = (nl >= 0 ? parts[i].slice(nl + 1) : parts[i]).replace(/\n$/, '');
+      const id = cbCodes.push(code) - 1;
+      out += `<div class="codeblock"><div class="cb-head"><span>${esc(lang || 'code')}</span><span class="cb-btns"><button data-cb="${id}" data-act="copy">Copy</button><button data-cb="${id}" data-act="insert">Insert</button><button data-cb="${id}" data-act="apply">Apply</button></span></div><pre><code>${esc(code)}</code></pre></div>`;
+    } else if (parts[i]) {
+      out += `<div class="md">${renderInline(parts[i])}</div>`;
+    }
+  }
+  return out;
+}
+
 function badges(m, status) {
   const out = [`<span class="b b-us">🇺🇸 US · ${esc(m.origin.org)}</span>`];
   out.push(m.provider === 'local' ? `<span class="b b-host">on-device</span>` : `<span class="b b-host">US providers pinned</span>`);
@@ -91,6 +115,10 @@ window.addEventListener('message', (e) => {
   if (m.type === 'restoreInput') $('input').value = m.text;
   if (m.type === 'error') { $('banner-text').textContent = m.message; $('banner').hidden = false; }
   if (m.type === 'token') appendToken(m.text);
+  if (m.type === 'context') {
+    $('chips').innerHTML = (m.chips || []).map((c) => `<span class="chip">${esc(c.label)}<button data-chip="${c.id}">×</button></span>`).join('');
+    document.querySelectorAll('#chips button').forEach((b) => b.onclick = () => vscode.postMessage({ type: 'excludeContext', id: b.dataset.chip }));
+  }
   if (m.type === 'agentStep') { $('steps').hidden = false; $('steps').innerHTML += `<div>${esc(m.step)}</div>`; }
   if (m.type === 'devMode') {
     window.__dev = m.on;
@@ -102,10 +130,12 @@ window.addEventListener('message', (e) => {
 });
 
 function renderHistory(messages) {
-  streaming = '';
+  streaming = ''; cbCodes = [];
   $('messages').innerHTML = messages
     .filter((m) => m.role === 'user' || (m.role === 'assistant' && m.content))
-    .map((m) => `<div class="msg ${m.role}"><pre>${esc(m.content)}</pre></div>`).join('');
+    .map((m) => m.role === 'assistant'
+      ? `<div class="msg assistant">${renderMarkdown(m.content)}</div>`
+      : `<div class="msg user"><pre>${esc(m.content)}</pre></div>`).join('');
   $('messages').scrollTop = $('messages').scrollHeight;
 }
 function appendToken(t) {
@@ -132,6 +162,14 @@ $('cancel').onclick = () => { vscode.postMessage({ type: 'cancel' }); $('cancel'
 $('new-chat').onclick = () => vscode.postMessage({ type: 'newChat' });
 $('agent-toggle').onchange = (e) => vscode.postMessage({ type: 'agentToggle', on: e.target.checked });
 $('banner-close').onclick = () => { $('banner').hidden = true; };
+$('messages').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-cb]');
+  if (!b) return;
+  const code = cbCodes[+b.dataset.cb];
+  if (b.dataset.act === 'copy') { navigator.clipboard.writeText(code); b.textContent = 'Copied'; setTimeout(() => (b.textContent = 'Copy'), 900); }
+  if (b.dataset.act === 'insert') vscode.postMessage({ type: 'insertCode', code });
+  if (b.dataset.act === 'apply') vscode.postMessage({ type: 'applyCode', code });
+});
 $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('send').click(); } });
 
 $('fw-key-save').onclick = () => { const k = $('fw-key').value.trim(); if (k) vscode.postMessage({ type: 'setFireworksKey', key: k }); };
