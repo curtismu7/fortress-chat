@@ -5,8 +5,9 @@ import { loadPolicy, localEntries, explainBlock, type PolicyEntry, type StatusRe
 import { DaemonClient } from '../daemon';
 import { SessionStore } from '../sessionStore';
 import { splitThink } from '../reasoning';
-import { resolveTarget } from '../providers/target';
+import { resolveTarget, type ResolvedTarget } from '../providers/target';
 import { resolveDevTarget } from '../providers/dev';
+import { buildInlineEditMessages, stripCodeFences } from '../inlineEdit';
 import { DEV_PRESETS } from '../devPresets';
 import { streamChat } from '../providers/stream';
 import { runAgentTurn } from '../agent/loop';
@@ -250,18 +251,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     };
   }
 
+  private async currentTarget(): Promise<ResolvedTarget> {
+    if (this.devMode && this.devModel) {
+      const key = await getFireworksKey(this.context.secrets);
+      return resolveDevTarget(this.devModel, key ?? '');
+    }
+    if (this.selected) {
+      if (!this.client) this.client = await this.connect();
+      return resolveTarget(this.selected, await this.targetDeps());
+    }
+    throw new Error('Pick a model first.');
+  }
+
+  async inlineEdit(code: string, instruction: string, language: string, signal: AbortSignal): Promise<string> {
+    const target = await this.currentTarget();
+    const r = await streamChat(target, buildInlineEditMessages(code, instruction, language), () => {}, signal);
+    return stripCodeFences(r.content);
+  }
+
   private async handleSend(text: string): Promise<void> {
     let target;
     try {
-      if (this.devMode && this.devModel) {
-        const key = await getFireworksKey(this.context.secrets);
-        target = resolveDevTarget(this.devModel, key ?? '');
-      } else if (this.selected) {
-        if (!this.client) this.client = await this.connect();
-        target = resolveTarget(this.selected, await this.targetDeps());
-      } else {
-        this.banner('Pick a model first.'); this.post({ type: 'restoreInput', text }); return;
-      }
+      target = await this.currentTarget();
     } catch (e) {
       this.banner(String(e instanceof Error ? e.message : e));
       this.post({ type: 'restoreInput', text });
