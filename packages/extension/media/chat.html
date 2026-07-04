@@ -30,6 +30,7 @@
   </section>
 
   <header id="chat-head" hidden>
+    <select id="chat-picker" title="Chats"></select>
     <span id="active-model"></span>
     <label><input type="checkbox" id="agent-toggle" /> Agent</label>
     <button id="new-chat">New chat</button>
@@ -39,6 +40,7 @@
   <footer id="composer" hidden>
     <div id="chips"></div>
     <textarea id="input" rows="2" placeholder="Ask your model…"></textarea>
+    <span id="meter" title="estimated request size vs the model's context window"></span>
     <button id="send">Send</button>
     <button id="cancel" hidden>Stop</button>
   </footer>

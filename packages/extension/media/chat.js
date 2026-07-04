@@ -120,6 +120,11 @@ window.addEventListener('message', (e) => {
     document.querySelectorAll('#chips button').forEach((b) => b.onclick = () => vscode.postMessage({ type: 'excludeContext', id: b.dataset.chip }));
   }
   if (m.type === 'agentStep') { $('steps').hidden = false; $('steps').innerHTML += `<div>${esc(m.step)}</div>`; }
+  if (m.type === 'reasoning') appendReasoning(m.text);
+  if (m.type === 'reasoningDone') { const b = document.querySelector('.reasoning-live'); if (b) b.open = false; }
+  if (m.type === 'usage' && m.usage) { const u = $('usage-last'); if (u) u.textContent = `↑${m.usage.promptTokens} ↓${m.usage.completionTokens} tok`; }
+  if (m.type === 'chats') { const p = $('chat-picker'); if (p) { p.innerHTML = (m.metas || []).map((c) => `<option value="${c.id}">${esc(c.title || 'New chat')}</option>`).join(''); p.value = m.activeId; } }
+  if (m.type === 'contextWindow') { window.__ctxWindow = m.tokens; updateMeter(); }
   if (m.type === 'devMode') {
     window.__dev = m.on;
     $('dev').hidden = !m.on;
@@ -131,11 +136,16 @@ window.addEventListener('message', (e) => {
 
 function renderHistory(messages) {
   streaming = ''; cbCodes = [];
-  $('messages').innerHTML = messages
-    .filter((m) => m.role === 'user' || (m.role === 'assistant' && m.content))
-    .map((m) => m.role === 'assistant'
-      ? `<div class="msg assistant">${renderMarkdown(m.content)}</div>`
-      : `<div class="msg user"><pre>${esc(m.content)}</pre></div>`).join('');
+  const shown = messages.map((m, i) => ({ m, i })).filter(({ m }) => m.role === 'user' || (m.role === 'assistant' && m.content));
+  let lastA = -1; shown.forEach((x, k) => { if (x.m.role === 'assistant') lastA = k; });
+  $('messages').innerHTML = shown.map(({ m, i }, k) => {
+    if (m.role === 'assistant') {
+      const reason = (k === lastA && turnReasoning) ? `<details class="reasoning"><summary>▸ Reasoning</summary><pre>${esc(turnReasoning)}</pre></details>` : '';
+      const foot = k === lastA ? `<div class="msg-foot"><button class="regen">↻ Regenerate</button><span class="usage" id="usage-last"></span></div>` : '';
+      return `<div class="msg assistant">${reason}${renderMarkdown(m.content)}${foot}</div>`;
+    }
+    return `<div class="msg user"><pre>${esc(m.content)}</pre><button class="editmsg" data-idx="${i}" title="Edit &amp; resend">✎</button></div>`;
+  }).join('');
   $('messages').scrollTop = $('messages').scrollHeight;
 }
 function appendToken(t) {
@@ -143,6 +153,26 @@ function appendToken(t) {
   let el = document.querySelector('.msg.streaming pre');
   if (!el) { const d = document.createElement('div'); d.className = 'msg assistant streaming'; d.innerHTML = '<pre></pre>'; $('messages').appendChild(d); el = d.querySelector('pre'); }
   el.textContent = streaming; $('messages').scrollTop = $('messages').scrollHeight;
+}
+let turnReasoning = '';
+function appendReasoning(t) {
+  turnReasoning += t;
+  let box = document.querySelector('.reasoning-live');
+  if (!box) {
+    box = document.createElement('details');
+    box.className = 'reasoning reasoning-live'; box.open = true;
+    box.innerHTML = '<summary>▸ Reasoning</summary><pre></pre>';
+    $('messages').appendChild(box);
+  }
+  box.querySelector('pre').textContent = turnReasoning;
+  $('messages').scrollTop = $('messages').scrollHeight;
+}
+function updateMeter() {
+  const win = window.__ctxWindow || 8192;
+  const est = Math.ceil(($('input').value.length + 200) / 4);
+  const el = $('meter'); if (!el) return;
+  el.textContent = `~${(est / 1000).toFixed(1)}k / ${Math.round(win / 1000)}k`;
+  el.classList.toggle('warn', est > win * 0.9);
 }
 function renderRejection(r, modelId) {
   const need = Math.round(r.requiredBytes / 2 ** 30), have = Math.round(r.availableBytes / 2 ** 30);
@@ -164,19 +194,26 @@ $('send').onclick = () => {
   const cmd = t.split(/\s+/)[0];
   if (slash[cmd]) { const rest = t.slice(cmd.length).trim(); t = slash[cmd] + (rest ? ' ' + rest : ''); }
   $('input').value = ''; $('banner').hidden = true; $('steps').innerHTML = ''; $('steps').hidden = true;
-  vscode.postMessage({ type: 'send', text: t }); $('cancel').hidden = false;
+  turnReasoning = ''; vscode.postMessage({ type: 'send', text: t }); $('cancel').hidden = false; updateMeter();
 };
 $('cancel').onclick = () => { vscode.postMessage({ type: 'cancel' }); $('cancel').hidden = true; };
-$('new-chat').onclick = () => vscode.postMessage({ type: 'newChat' });
+$('new-chat').onclick = () => { turnReasoning = ''; vscode.postMessage({ type: 'newChat' }); };
+$('chat-picker').onchange = (e) => { turnReasoning = ''; vscode.postMessage({ type: 'switchChat', id: e.target.value }); };
+$('input').addEventListener('input', updateMeter);
 $('agent-toggle').onchange = (e) => vscode.postMessage({ type: 'agentToggle', on: e.target.checked });
 $('banner-close').onclick = () => { $('banner').hidden = true; };
 $('messages').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-cb]');
-  if (!b) return;
-  const code = cbCodes[+b.dataset.cb];
-  if (b.dataset.act === 'copy') { navigator.clipboard.writeText(code); b.textContent = 'Copied'; setTimeout(() => (b.textContent = 'Copy'), 900); }
-  if (b.dataset.act === 'insert') vscode.postMessage({ type: 'insertCode', code });
-  if (b.dataset.act === 'apply') vscode.postMessage({ type: 'applyCode', code });
+  if (b) {
+    const code = cbCodes[+b.dataset.cb];
+    if (b.dataset.act === 'copy') { navigator.clipboard.writeText(code); b.textContent = 'Copied'; setTimeout(() => (b.textContent = 'Copy'), 900); }
+    if (b.dataset.act === 'insert') vscode.postMessage({ type: 'insertCode', code });
+    if (b.dataset.act === 'apply') vscode.postMessage({ type: 'applyCode', code });
+    return;
+  }
+  if (e.target.closest('.regen')) { turnReasoning = ''; vscode.postMessage({ type: 'regenerate' }); return; }
+  const em = e.target.closest('.editmsg');
+  if (em) { vscode.postMessage({ type: 'editLoad', index: +em.dataset.idx }); return; }
 });
 $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('send').click(); } });
 

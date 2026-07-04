@@ -45,3 +45,15 @@ footer { display: flex; gap: 6px; padding: 8px; } #input { flex: 1; resize: none
 .codeblock code, code.inl { font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; }
 code.inl { background: var(--vscode-textCodeBlock-background, #2a2a2a); padding: 0 3px; border-radius: 3px; }
 .md { white-space: normal; }
+#chat-picker { max-width: 130px; background: var(--vscode-dropdown-background); color: inherit; border: 1px solid var(--vscode-dropdown-border); border-radius: 4px; font-size: 11px; }
+.reasoning { margin: 4px 0; font-size: 11.5px; opacity: 0.85; }
+.reasoning summary { cursor: pointer; color: var(--vscode-descriptionForeground); }
+.reasoning pre { white-space: pre-wrap; margin: 4px 0 0; padding: 6px; background: var(--vscode-editorWidget-background); border-radius: 4px; }
+.msg-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+.msg-foot .regen { background: none; border: 1px solid var(--vscode-widget-border, #444); color: inherit; border-radius: 3px; font-size: 10px; padding: 1px 6px; cursor: pointer; }
+.usage { font-size: 10px; color: var(--vscode-descriptionForeground); }
+.msg.user { position: relative; }
+.editmsg { position: absolute; top: 4px; right: 4px; background: none; border: none; color: var(--vscode-descriptionForeground); cursor: pointer; font-size: 11px; opacity: 0.5; }
+.editmsg:hover { opacity: 1; }
+#meter { font-size: 10px; color: var(--vscode-descriptionForeground); align-self: center; }
+#meter.warn { color: #d6a85b; }
