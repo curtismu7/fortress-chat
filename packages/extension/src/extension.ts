@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { join } from 'node:path';
 import { ensureDaemon } from './daemon';
 import { ChatViewProvider } from './chat/ChatViewProvider';
+import { editFileWithApproval } from './agent/tools';
 
 export function activate(context: vscode.ExtensionContext): void {
   const managerEntry = join(context.extensionPath, 'out', 'manager', 'index.js');
@@ -28,6 +29,25 @@ export function activate(context: vscode.ExtensionContext): void {
         await vscode.commands.executeCommand('fortressCode.chat.focus');
         provider.runSelectionAction(k);
       })),
+    vscode.commands.registerCommand('fortress-code.inlineEdit', async () => {
+      const ed = vscode.window.activeTextEditor;
+      if (!ed) { void vscode.window.showErrorMessage('Open a file first.'); return; }
+      const range = ed.selection.isEmpty ? ed.document.lineAt(ed.selection.active.line).range : ed.selection;
+      const instruction = await vscode.window.showInputBox({ prompt: 'Fortress Code — inline edit', placeHolder: 'e.g. add error handling' });
+      if (!instruction) return;
+      await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Fortress Code editing…', cancellable: true }, async (_p, token) => {
+        const ac = new AbortController();
+        token.onCancellationRequested(() => ac.abort());
+        try {
+          const newCode = await provider.inlineEdit(ed.document.getText(range), instruction, ed.document.languageId, ac.signal);
+          const full = ed.document.getText();
+          const next = full.slice(0, ed.document.offsetAt(range.start)) + newCode + full.slice(ed.document.offsetAt(range.end));
+          await editFileWithApproval(ed.document.fileName, next, vscode.workspace.asRelativePath(ed.document.fileName));
+        } catch (e) {
+          void vscode.window.showErrorMessage(`Inline edit failed: ${e instanceof Error ? e.message : e}`);
+        }
+      });
+    }),
   );
 }
 

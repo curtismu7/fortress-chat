@@ -65,6 +65,10 @@
       {
         "command": "fortress-code.docSelection",
         "title": "Fortress Code: Document Selection"
+      },
+      {
+        "command": "fortress-code.inlineEdit",
+        "title": "Fortress Code: Inline Edit"
       }
     ],
     "keybindings": [
@@ -72,6 +76,12 @@
         "command": "fortress-code.toggleDevMode",
         "key": "ctrl+alt+m",
         "mac": "ctrl+alt+m"
+      },
+      {
+        "command": "fortress-code.inlineEdit",
+        "key": "ctrl+shift+k",
+        "mac": "cmd+shift+k",
+        "when": "editorTextFocus"
       }
     ],
     "submenus": [
