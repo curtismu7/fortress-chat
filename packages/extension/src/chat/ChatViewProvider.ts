@@ -196,6 +196,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.post({ type: 'addAccepted', slug });
   }
 
+  private static ACTION_PROMPTS: Record<string, string> = {
+    explain: 'Explain what this code does, clearly and concisely.',
+    fix: 'Find and fix bugs in this code. Return the corrected code.',
+    test: 'Write unit tests for this code.',
+    refactor: 'Refactor this code for clarity and quality without changing behavior.',
+    doc: 'Add clear doc comments to this code.',
+  };
+
+  runSelectionAction(kind: string): void {
+    const prompt = ChatViewProvider.ACTION_PROMPTS[kind];
+    if (prompt) void this.handleSend(prompt);
+  }
+
   private async targetDeps() {
     const status = this.client ? await this.client.status().catch(() => null) : null;
     return {

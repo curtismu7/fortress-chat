@@ -157,7 +157,15 @@ $('seg-local').onclick = () => setProvider('local');
 $('seg-or').onclick = () => setProvider('openrouter');
 $('or-key-save').onclick = () => { const k = $('or-key-input').value.trim(); if (k) vscode.postMessage({ type: 'setOpenRouterKey', key: k }); };
 $('add-btn').onclick = () => { const s = $('add-slug').value.trim(); if (s) vscode.postMessage({ type: 'addModel', slug: s }); };
-$('send').onclick = () => { const t = $('input').value.trim(); if (!t) return; $('input').value = ''; $('banner').hidden = true; $('steps').innerHTML = ''; $('steps').hidden = true; vscode.postMessage({ type: 'send', text: t }); $('cancel').hidden = false; };
+$('send').onclick = () => {
+  let t = $('input').value.trim();
+  if (!t) return;
+  const slash = { '/explain': 'Explain this code.', '/fix': 'Find and fix bugs in this code.', '/test': 'Write unit tests for this code.', '/refactor': 'Refactor this code without changing behavior.', '/doc': 'Add doc comments to this code.' };
+  const cmd = t.split(/\s+/)[0];
+  if (slash[cmd]) { const rest = t.slice(cmd.length).trim(); t = slash[cmd] + (rest ? ' ' + rest : ''); }
+  $('input').value = ''; $('banner').hidden = true; $('steps').innerHTML = ''; $('steps').hidden = true;
+  vscode.postMessage({ type: 'send', text: t }); $('cancel').hidden = false;
+};
 $('cancel').onclick = () => { vscode.postMessage({ type: 'cancel' }); $('cancel').hidden = true; };
 $('new-chat').onclick = () => vscode.postMessage({ type: 'newChat' });
 $('agent-toggle').onchange = (e) => vscode.postMessage({ type: 'agentToggle', on: e.target.checked });

@@ -23,6 +23,11 @@ export function activate(context: vscode.ExtensionContext): void {
       provider.setDevMode(on);
       void vscode.window.showInformationMessage(`Fortress Code Developer Mode ${on ? 'ON — governance BYPASSED' : 'off'}`);
     }),
+    ...['explain', 'fix', 'test', 'refactor', 'doc'].map((k) =>
+      vscode.commands.registerCommand(`fortress-code.${k}Selection`, async () => {
+        await vscode.commands.executeCommand('fortressCode.chat.focus');
+        provider.runSelectionAction(k);
+      })),
   );
 }
 
