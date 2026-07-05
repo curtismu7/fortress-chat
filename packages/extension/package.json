@@ -135,6 +135,8 @@
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.90.0",
     "esbuild": "^0.25.12",
+    "katex": "^0.17.0",
+    "mermaid": "^11.16.0",
     "typescript": "^5.5.0",
     "vitest": "^4.1.9"
   }

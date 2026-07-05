@@ -52,7 +52,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     let html = readFileSync(join(this.context.extensionPath, 'media', 'chat.html'), 'utf8');
     html = html.replace(/\{cspSource\}/g, view.webview.cspSource);
     const bust = `?v=${Date.now()}`; // cache-bust so the webview never serves a stale chat.css/chat.js
-    for (const f of ['chat.css', 'chat.js']) {
+    for (const f of ['chat.css', 'chat.js', 'vendor/katex.min.css', 'vendor/katex.min.js', 'vendor/auto-render.min.js', 'vendor/mermaid.min.js']) {
       html = html.replace(f, view.webview.asWebviewUri(vscode.Uri.joinPath(media, f)).toString() + bust);
     }
     view.webview.html = html;

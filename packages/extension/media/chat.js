@@ -37,12 +37,70 @@ function renderMarkdown(text) {
       const lang = nl >= 0 ? parts[i].slice(0, nl).trim() : '';
       const code = (nl >= 0 ? parts[i].slice(nl + 1) : parts[i]).replace(/\n$/, '');
       const id = cbCodes.push(code) - 1;
-      out += `<div class="codeblock"><div class="cb-head"><span>${esc(lang || 'code')}</span><span class="cb-btns"><button data-cb="${id}" data-act="copy">Copy</button><button data-cb="${id}" data-act="insert">Insert</button><button data-cb="${id}" data-act="apply">Apply</button></span></div><pre><code>${esc(code)}</code></pre></div>`;
+      const langClass = /^[\w-]+$/.test(lang) ? ` language-${lang}` : '';
+      out += `<div class="codeblock"><div class="cb-head"><span>${esc(lang || 'code')}</span><span class="cb-btns"><button data-cb="${id}" data-act="copy">Copy</button><button data-cb="${id}" data-act="insert">Insert</button><button data-cb="${id}" data-act="apply">Apply</button></span></div><pre><code class="${langClass.trim()}">${esc(code)}</code></pre></div>`;
     } else if (parts[i]) {
       out += `<div class="md">${renderInline(parts[i])}</div>`;
     }
   }
   return out;
+}
+
+// Post-render pass: KaTeX math + Mermaid diagrams. Runs only on already-escaped
+// rendered DOM (never on raw/unescaped user text). Must never throw out of this
+// function — rendering extras degrading is fine, breaking chat is not.
+function enhanceRich(container) {
+  try {
+    if (window.renderMathInElement) {
+      window.renderMathInElement(container, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+        ],
+        throwOnError: false,
+        trust: false,
+      });
+    }
+    if (!window.mermaid) return;
+    if (!window.__mermaidInit) {
+      window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'dark' });
+      window.__mermaidInit = true;
+    }
+    container.querySelectorAll('pre code').forEach((code) => {
+      if (code.dataset.mermaidDone) return;
+      const text = code.textContent || '';
+      // Prefer the fenced-code info string (class="language-mermaid", set by
+      // renderMarkdown from the ```lang fence) over guessing from content.
+      const isMermaidLang = code.classList.contains('language-mermaid');
+      const looksLikeMermaid = /^\s*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|mindmap|journey|timeline)\b/.test(text);
+      if (!isMermaidLang && !looksLikeMermaid) return;
+      code.dataset.mermaidDone = '1';
+      const block = code.closest('.codeblock') || code.parentElement;
+      const holder = document.createElement('div');
+      holder.className = 'mermaid-holder';
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'mermaid-toggle';
+      toggle.hidden = true;
+      let showingDiagram = true;
+      toggle.textContent = 'Show code';
+      toggle.onclick = () => {
+        showingDiagram = !showingDiagram;
+        block.hidden = showingDiagram;
+        holder.hidden = !showingDiagram;
+        toggle.textContent = showingDiagram ? 'Show code' : 'Show diagram';
+      };
+      block.insertAdjacentElement('afterend', toggle);
+      block.insertAdjacentElement('afterend', holder);
+      window.mermaid.render('mm' + Math.random().toString(36).slice(2), text)
+        .then(({ svg }) => {
+          holder.innerHTML = svg;
+          block.hidden = true;
+          toggle.hidden = false;
+        })
+        .catch(() => { holder.remove(); toggle.remove(); }); // fail-soft: plain code block stays visible
+    });
+  } catch { /* rendering extras must never break chat */ }
 }
 
 function cardStatus(m, status) {
@@ -216,6 +274,7 @@ function renderHistory(messages) {
       el.appendChild(document.createTextNode(' '));
     });
   });
+  enhanceRich($('messages'));
   $('messages').scrollTop = $('messages').scrollHeight;
 }
 function appendToken(t) {

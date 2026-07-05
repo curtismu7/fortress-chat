@@ -43,6 +43,8 @@ footer { display: flex; gap: 6px; padding: 8px; } #input { flex: 1; resize: none
 .cb-btns button { background: none; border: 1px solid var(--vscode-widget-border, #444); color: inherit; border-radius: 3px; font-size: 10px; padding: 1px 6px; margin-left: 3px; cursor: pointer; }
 .codeblock pre { margin: 0; padding: 8px; overflow-x: auto; background: var(--vscode-textCodeBlock-background, #1e1e1e); }
 .codeblock code, code.inl { font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; }
+.mermaid-holder { margin: 6px 0; overflow-x: auto; }
+.mermaid-toggle { font-size: 10px; padding: 1px 6px; margin: 0 0 6px; }
 code.inl { background: var(--vscode-textCodeBlock-background, #2a2a2a); padding: 0 3px; border-radius: 3px; }
 .md { white-space: normal; }
 #chat-picker { max-width: 130px; background: var(--vscode-dropdown-background); color: inherit; border: 1px solid var(--vscode-dropdown-border); border-radius: 4px; font-size: 11px; }
