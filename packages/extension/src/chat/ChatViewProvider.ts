@@ -272,6 +272,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           await editFileWithApproval(ed.document.fileName, next, rel);
           return;
         }
+        case 'openSource': {
+          const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          if (!root) { this.banner('Open a folder to jump to a source.'); return; }
+          try {
+            const abs = resolveInWorkspace(root, String(m.file));
+            const doc = await vscode.workspace.openTextDocument(abs);
+            const editor = await vscode.window.showTextDocument(doc);
+            const startLine = Math.max(0, Number(m.startLine) - 1);
+            const endLine = Math.max(startLine, Number(m.endLine) - 1);
+            const range = new vscode.Range(startLine, 0, endLine, doc.lineAt(Math.min(endLine, doc.lineCount - 1)).text.length);
+            editor.selection = new vscode.Selection(range.start, range.end);
+            editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+          } catch (e) {
+            this.banner(`Could not open ${String(m.file)}: ${e instanceof Error ? e.message : e}`);
+          }
+          return;
+        }
       }
     } catch (e) {
       this.banner(String(e));
@@ -355,7 +372,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     const session = this.store.active();
-    const preamble = buildContextPreamble(await this.collectContext(text));
+    const ctx = await this.collectContext(text);
+    const preamble = buildContextPreamble(ctx);
     const sys = SYSTEM_PROMPT + (preamble ? '\n\n---\n' + preamble : '');
     const preTurnLen = session.messages.length;
     session.addUser(text);
@@ -370,6 +388,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           (t) => this.post({ type: 'token', text: t }), this.generating.signal,
           (t) => this.post({ type: 'reasoning', text: t }));
         session.addAssistant(splitThink(r.content).content || '(no reply)');
+        if (ctx.codebase && ctx.codebase.length) {
+          const last = session.messages[session.messages.length - 1];
+          last.sources = ctx.codebase.map(({ file, startLine, endLine }) => ({ file, startLine, endLine }));
+        }
         this.post({ type: 'reasoningDone' });
         usage = r.usage;
       }

@@ -33,6 +33,18 @@ describe('SessionStore', () => {
     s.active().addUser('persisted'); s.touchTitle(); s.save();
     expect(SessionStore.load(store).active().messages[0].content).toBe('persisted');
   });
+  it('round-trips assistant message sources through save/load', () => {
+    const store = mem();
+    const s = SessionStore.load(store);
+    s.active().addUser('what does this do?');
+    s.active().addAssistant('it does that');
+    const last = s.active().messages[s.active().messages.length - 1];
+    last.sources = [{ file: 'src/a.ts', startLine: 10, endLine: 20 }];
+    s.save();
+    const reloaded = SessionStore.load(store).active().messages;
+    expect(reloaded[reloaded.length - 1].sources).toEqual([{ file: 'src/a.ts', startLine: 10, endLine: 20 }]);
+  });
+
   it('migrates a legacy single session', () => {
     const store = mem({ 'fortressCode.session': [{ role: 'user', content: 'legacy' }] });
     const s = SessionStore.load(store);
