@@ -126,7 +126,13 @@ window.addEventListener('message', (e) => {
   if (m.type === 'addBlocked') { $('add-blocked').hidden = false; $('add-blocked').innerHTML = `<b style="color:#e07a7a">⛔ Blocked by policy</b><p>${esc(m.reason)}</p><span class="b">✗ non-US</span><p style="margin-top:6px">Approved US models are listed above, or request an addition.</p>`; }
   if (m.type === 'addAccepted') { $('add-blocked').hidden = false; $('add-blocked').innerHTML = `<p>${esc(m.slug)} is already on the approved list — select it above.</p>`; }
   if (m.type === 'restoreInput') $('input').value = m.text;
-  if (m.type === 'error') { if (m.message) { $('banner-text').textContent = m.message; $('banner').hidden = false; } else { $('banner').hidden = true; } }
+  if (m.type === 'error') {
+    if (m.message) {
+      $('banner-text').textContent = m.message; $('banner').hidden = false;
+      clearTimeout(window.__bannerTimer);
+      window.__bannerTimer = setTimeout(() => { $('banner').hidden = true; }, 7000);
+    } else { $('banner').hidden = true; }
+  }
   if (m.type === 'clearBanner') $('banner').hidden = true;
   if (m.type === 'token') appendToken(m.text);
   if (m.type === 'context') {
