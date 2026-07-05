@@ -40,8 +40,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     view.webview.options = { enableScripts: true, localResourceRoots: [media] };
     let html = readFileSync(join(this.context.extensionPath, 'media', 'chat.html'), 'utf8');
     html = html.replace(/\{cspSource\}/g, view.webview.cspSource);
+    const bust = `?v=${Date.now()}`; // cache-bust so the webview never serves a stale chat.css/chat.js
     for (const f of ['chat.css', 'chat.js']) {
-      html = html.replace(f, view.webview.asWebviewUri(vscode.Uri.joinPath(media, f)).toString());
+      html = html.replace(f, view.webview.asWebviewUri(vscode.Uri.joinPath(media, f)).toString() + bust);
     }
     view.webview.html = html;
     view.webview.onDidReceiveMessage((m) => this.onMessage(m));
@@ -49,7 +50,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private post(msg: unknown): void { void this.view?.webview.postMessage(msg); }
-  private banner(message: string): void { this.post({ type: 'error', message }); }
+  private banner(message: string): void { this.post({ type: 'error', message: (message && message.trim()) ? message : 'Fortress Code error (no details)' }); }
 
   private async ensureClient(): Promise<DaemonClient> {
     if (!this.client) this.client = await this.connect();

@@ -1,9 +1,17 @@
 const vscode = acquireVsCodeApi();
 const $ = (id) => document.getElementById(id);
+document.addEventListener('click', (e) => { if (e.target && e.target.id === 'banner-close') { $('banner').hidden = true; } });
 let streaming = '';
 let provider = 'local';
 let policy = { local: [], openrouter: [] };
 let selectedId = null;
+let galleryUserToggled = false;
+function updateGalleryToggle() {
+  if (!$('gallery-toggle')) return;
+  const collapsed = $('gallery-body').hidden;
+  const active = ($('active-model').textContent || '').trim();
+  $('gallery-toggle').innerHTML = `${collapsed ? '▸' : '▾'} Models${collapsed && active ? ` · <span style="color:#4ec98a">${esc(active)}</span>` : ''}`;
+}
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
@@ -102,6 +110,8 @@ function renderState(status) {
     agentEl.disabled = !m || !m.agentCapable;
     if (agentEl.disabled) agentEl.checked = false;
   }
+  if (selectedId && !galleryUserToggled) $('gallery-body').hidden = true;
+  updateGalleryToggle();
 }
 
 function setProvider(p) {
@@ -218,6 +228,7 @@ $('send').onclick = () => {
 };
 $('cancel').onclick = () => { vscode.postMessage({ type: 'cancel' }); $('cancel').hidden = true; };
 $('new-chat').onclick = () => { turnReasoning = ''; vscode.postMessage({ type: 'newChat' }); };
+{ const _gt = $('gallery-toggle'); if (_gt) _gt.onclick = () => { galleryUserToggled = true; $('gallery-body').hidden = !$('gallery-body').hidden; updateGalleryToggle(); }; }
 $('chat-picker').onchange = (e) => { turnReasoning = ''; vscode.postMessage({ type: 'switchChat', id: e.target.value }); };
 $('input').addEventListener('input', updateMeter);
 $('agent-toggle').onchange = (e) => vscode.postMessage({ type: 'agentToggle', on: e.target.checked });
@@ -244,6 +255,8 @@ $('dev-use').onclick = () => {
   vscode.postMessage({ type: 'selectDevModel', slug });
   $('chat-head').hidden = false; $('composer').hidden = false; $('send').disabled = false;
   $('active-model').innerHTML = '<span class="dev-active">⚠ DEV · ' + esc(slug) + '</span>';
+  if (!galleryUserToggled) $('gallery-body').hidden = true;
+  updateGalleryToggle();
 };
 
 setProvider('local');
