@@ -8,12 +8,21 @@ const toolCallSchema = z.object({
   function: z.object({ name: z.string(), arguments: z.string() }),
 });
 
+const sourceSchema = z.object({
+  file: z.string(),
+  startLine: z.number(),
+  endLine: z.number(),
+});
+
 const messageSchema = z.object({
   role: z.enum(['system', 'user', 'assistant', 'tool']),
   content: z.string(),
   tool_call_id: z.string().optional(),
   tool_calls: z.array(toolCallSchema).optional(),
+  sources: z.array(sourceSchema).optional(),
 });
+
+export type MessageSource = z.infer<typeof sourceSchema>;
 
 export type ToolCall = z.infer<typeof toolCallSchema>;
 export type ChatMessage = z.infer<typeof messageSchema>;

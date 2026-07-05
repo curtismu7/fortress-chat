@@ -65,3 +65,6 @@ code.inl { background: var(--vscode-textCodeBlock-background, #2a2a2a); padding:
 #rag-status { color: var(--vscode-descriptionForeground); font-size: 12px; }
 #rag-hint { color: var(--vscode-descriptionForeground); font-size: 12px; margin-top: 4px; }
 #rag-fill { display: block; height: 100%; width: 0; background: var(--vscode-progressBar-background); }
+.src-list { margin-top: 6px; font-size: 11px; color: var(--vscode-descriptionForeground); display: flex; flex-wrap: wrap; gap: 6px; }
+.src-list a { color: var(--vscode-textLink-foreground); text-decoration: none; }
+.src-list a:hover { text-decoration: underline; }
