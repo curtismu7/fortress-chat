@@ -1,4 +1,4 @@
-import { createWriteStream, createReadStream, existsSync, statSync, statfsSync, unlinkSync, renameSync } from 'node:fs';
+import { createWriteStream, createReadStream, existsSync, statSync, statfsSync, unlinkSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
@@ -22,6 +22,7 @@ export async function downloadFile(
   url: string, destPath: string, expectedSha256: string, expectedBytes: number,
   onProgress: (received: number, total: number) => void, signal?: AbortSignal,
 ): Promise<void> {
+  mkdirSync(dirname(destPath), { recursive: true }); // ensure the per-model dir exists before statfs/write
   const part = destPath + '.part';
   const already = existsSync(part) ? statSync(part).size : 0;
   if (freeDiskBytes(dirname(destPath)) < expectedBytes - already) {

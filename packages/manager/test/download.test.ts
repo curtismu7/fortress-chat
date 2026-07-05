@@ -32,6 +32,12 @@ describe('downloadFile', () => {
     expect(last).toBe(BODY.length);
   });
 
+  it('creates missing parent directories (per-model dir did not exist)', async () => {
+    const dest = join(mkdtempSync(join(tmpdir(), 'fc-dl-')), 'models', 'gemma-x', 'file.bin');
+    await downloadFile(`${base}/f`, dest, SHA, BODY.length, () => {});
+    expect(readFileSync(dest).equals(BODY)).toBe(true);
+  });
+
   it('resumes from an existing .part', async () => {
     const dest = join(mkdtempSync(join(tmpdir(), 'fc-dl-')), 'file.bin');
     writeFileSync(dest + '.part', BODY.subarray(0, 1000));
