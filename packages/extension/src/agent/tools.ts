@@ -1,6 +1,11 @@
 import * as vscode from 'vscode';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { resolve, sep, join, relative } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { truncate, parseRgHits } from './exec';
+
+const execFileP = promisify(execFile);
 
 export class PathEscapeError extends Error {}
 
@@ -9,6 +14,8 @@ export const TOOL_SCHEMAS = [
   { type: 'function', function: { name: 'list_files', description: 'List files under a workspace directory (recursive, max 200 entries)', parameters: { type: 'object', properties: { path: { type: 'string', description: 'workspace-relative directory, "" for root' } }, required: ['path'] } } },
   { type: 'function', function: { name: 'search', description: 'Search file contents with a case-sensitive substring', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } } },
   { type: 'function', function: { name: 'edit_file', description: 'Replace the full contents of a file (or create it). The user reviews a diff and can reject.', parameters: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string', description: 'complete new file contents' } }, required: ['path', 'content'] } } },
+  { type: 'function', function: { name: 'create_file', description: 'Create a NEW file (fails if it already exists). The user reviews the content and can reject.', parameters: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string', description: 'complete file contents' } }, required: ['path', 'content'] } } },
+  { type: 'function', function: { name: 'run_command', description: 'Run a shell command in the workspace root (e.g. run tests/build/lint). The user MUST approve it before it runs; stdout+stderr is returned.', parameters: { type: 'object', properties: { command: { type: 'string', description: 'the shell command to run' } }, required: ['command'] } } },
 ];
 
 export function resolveInWorkspace(root: string, relPath: string): string {
@@ -70,6 +77,14 @@ export async function executeTool(name: string, args: any, workspaceRoot: string
       return acc.join('\n') || '(empty)';
     }
     case 'search': {
+      const q = String(args.query);
+      try { // prefer ripgrep for speed; fall back to a JS walk if rg is unavailable
+        const { stdout } = await execFileP('rg', ['--line-number', '--no-heading', '--color', 'never', '-S', '--max-count', '5', '-g', '!node_modules', '-g', '!.git', q, '.'], { cwd: workspaceRoot, maxBuffer: 4 * 1024 * 1024 });
+        return parseRgHits(stdout, 100) || 'no matches';
+      } catch (e: any) {
+        if (e && e.code === 1 && !e.stderr) return 'no matches'; // rg ran, found nothing
+        /* rg missing or errored → JS fallback below */
+      }
       const acc: string[] = [];
       walk(workspaceRoot, workspaceRoot, acc, 2000);
       const hits: string[] = [];
@@ -77,7 +92,7 @@ export async function executeTool(name: string, args: any, workspaceRoot: string
         try {
           const lines = readFileSync(join(workspaceRoot, rel), 'utf8').split('\n');
           lines.forEach((line, i) => {
-            if (line.includes(String(args.query)) && hits.length < 100) hits.push(`${rel}:${i + 1}: ${line.trim().slice(0, 200)}`);
+            if (line.includes(q) && hits.length < 100) hits.push(`${rel}:${i + 1}: ${line.trim().slice(0, 200)}`);
           });
         } catch { /* binary or unreadable */ }
       }
@@ -87,6 +102,24 @@ export async function executeTool(name: string, args: any, workspaceRoot: string
       const rel = String(args.path);
       const abs = resolveInWorkspace(workspaceRoot, rel);
       return editFileWithApproval(abs, String(args.content), rel);
+    }
+    case 'create_file': {
+      const rel = String(args.path);
+      const abs = resolveInWorkspace(workspaceRoot, rel);
+      if (existsSync(abs)) return `error: ${rel} already exists — use edit_file to modify it`;
+      return editFileWithApproval(abs, String(args.content), rel);
+    }
+    case 'run_command': {
+      const command = String(args.command);
+      const choice = await vscode.window.showWarningMessage(`Fortress Code wants to run:\n\n${command}`, { modal: true }, 'Run', 'Reject');
+      if (choice !== 'Run') return 'rejected by user';
+      try {
+        const { stdout, stderr } = await execFileP('/bin/sh', ['-c', command], { cwd: workspaceRoot, timeout: 60_000, maxBuffer: 4 * 1024 * 1024 });
+        return truncate([stdout, stderr].filter(Boolean).join('\n') || '(no output)');
+      } catch (e: any) {
+        const out = [e?.stdout, e?.stderr].filter(Boolean).join('\n');
+        return truncate(`command failed${e?.code != null ? ` (exit ${e.code})` : ''}${e?.killed ? ' (timed out after 60s)' : ''}:\n${out || e?.message || String(e)}`);
+      }
     }
     default:
       return `unknown tool: ${name}`;
