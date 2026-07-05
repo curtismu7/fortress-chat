@@ -165,8 +165,8 @@ window.addEventListener('message', (e) => {
   if (m.type === 'ragStatus') {
     const s = m.stats || { files: 0, chunks: 0 };
     $('rag-status').textContent = s.chunks ? `Indexed ${s.files} files · ${s.chunks} chunks` : 'Not indexed';
-    $('rag-index').disabled = !!m.indexing;
-    if (!m.indexing) $('rag-bar').hidden = true;
+    if (m.indexing) { $('rag-index').disabled = true; }
+    else { $('rag-index').disabled = false; $('rag-bar').hidden = true; }
   }
   if (m.type === 'ragProgress') {
     const p = m.progress || {};

@@ -30,7 +30,7 @@ function walk(root: string, dir: string, out: string[]): void {
 
 export function listFiles(root: string): string[] {
   try {
-    const out = execFileSync('git', ['-C', root, 'ls-files', '-co', '--exclude-standard'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const out = execFileSync('git', ['-C', root, 'ls-files', '-co', '--exclude-standard'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
     return out.split('\n').map((l) => l.trim()).filter(Boolean);
   } catch {
     const out: string[] = [];

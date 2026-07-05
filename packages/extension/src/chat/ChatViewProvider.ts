@@ -33,6 +33,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private excluded = new Set<string>();
   private poller: ReturnType<typeof setInterval> | null = null;
   private watcherStarted = false;
+  private ragIndexing = false;
 
   constructor(private context: vscode.ExtensionContext, private connect: () => Promise<DaemonClient>) {
     this.store = SessionStore.load(context.workspaceState);
@@ -69,6 +70,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const hash = createHash('sha256').update(root).digest('hex').slice(0, 16);
       const dir = vscode.Uri.joinPath(this.context.globalStorageUri, 'rag', hash).fsPath;
       this.rag = new RagService(dir, 768, root);
+      if (this.rag.hasIndex()) this.startRagWatcher();
     }
     return this.rag;
   }
@@ -183,7 +185,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const status: StatusResponse = await this.client.status();
       this.post({ type: 'state', status, selectedId: this.selected?.id ?? null });
       const rag = this.ragService();
-      if (rag) this.post({ type: 'ragStatus', stats: rag.stats(), indexing: false });
+      if (rag) this.post({ type: 'ragStatus', stats: rag.stats(), indexing: this.ragIndexing });
     } catch {
       this.client = null; // daemon idle-exited; next action re-spawns
     }
@@ -196,10 +198,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.watcherStarted = true;
     const debouncer = new Debouncer(1000, async () => {
       if (!this.client) return;
+      if (this.ragIndexing) return;
+      this.ragIndexing = true;
       try {
         await rag.index(this.client, (p) => this.post({ type: 'ragProgress', progress: p }));
         this.post({ type: 'ragStatus', stats: rag.stats(), indexing: false });
       } catch { /* transient; next save retries */ }
+      finally { this.ragIndexing = false; }
     });
     const watcher = vscode.workspace.createFileSystemWatcher('**/*');
     const touch = (uri: vscode.Uri) => debouncer.add(uri.fsPath);
@@ -229,9 +234,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'selectDevModel': this.devModel = String(m.slug) || null; this.selected = null; this.postContextWindow(); return;
         case 'downloadModel': await (await this.ensureClient()).download(String(m.catalogId)); return;
         case 'indexWorkspace': {
+          if (this.ragIndexing) return;
           const rag = this.ragService();
           if (!rag) { this.banner('Open a folder to index a codebase.'); return; }
           const client = await this.ensureClient();
+          this.ragIndexing = true;
           this.post({ type: 'ragProgress', progress: { filesDone: 0, filesTotal: 0, chunksDone: 0, capped: false } });
           try {
             await rag.index(client, (p) => this.post({ type: 'ragProgress', progress: p }));
@@ -240,6 +247,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           } catch (e) {
             this.banner(`Indexing failed: ${e instanceof Error ? e.message : e}`);
             this.post({ type: 'ragStatus', stats: rag.stats(), indexing: false });
+          } finally {
+            this.ragIndexing = false;
           }
           return;
         }
