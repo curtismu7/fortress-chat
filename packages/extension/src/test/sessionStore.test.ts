@@ -70,4 +70,31 @@ describe('SessionStore', () => {
     store.fork(99);
     expect(store.active().messages).toHaveLength(1);
   });
+
+  it('fork deep-copies sources so fork and original are independent', () => {
+    const store = SessionStore.load(mem());
+    store.active().addUser('q');
+    store.active().messages.push({ role: 'assistant', content: 'a', sources: [{ file: 'x.ts', startLine: 1, endLine: 2 }] } as any);
+    const originalMsgs = store.active().messages;
+    store.fork(1);
+    const forked = store.active().messages;
+    expect(forked[1].sources).toEqual(originalMsgs[1].sources);
+    expect(forked[1].sources).not.toBe(originalMsgs[1].sources);
+    expect(forked[1].sources![0]).not.toBe(originalMsgs[1].sources![0]);
+  });
+
+  it('fork(-1) leaves activeId unchanged', () => {
+    const store = SessionStore.load(mem());
+    store.active().addUser('message');
+    const originalId = store.activeId;
+    store.fork(-1);
+    expect(store.activeId).toBe(originalId);
+  });
+
+  it('fork on empty store leaves activeId unchanged', () => {
+    const store = SessionStore.load(mem());
+    const originalId = store.activeId;
+    store.fork(0);
+    expect(store.activeId).toBe(originalId);
+  });
 });

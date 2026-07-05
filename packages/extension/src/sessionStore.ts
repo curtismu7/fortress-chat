@@ -38,7 +38,11 @@ export class SessionStore {
     if (!src || src.messages.length === 0 || index < 0) return;
     const upTo = Math.min(index, src.messages.length - 1);
     const copy = new Session();
-    copy.messages = src.messages.slice(0, upTo + 1).map((m) => ({ ...m }));
+    copy.messages = src.messages.slice(0, upTo + 1).map((m) => ({
+      ...m,
+      ...(m.sources ? { sources: m.sources.map((s) => ({ ...s })) } : {}),
+      ...(m.tool_calls ? { tool_calls: m.tool_calls.map((t) => ({ ...t, function: { ...t.function } })) } : {}),
+    }));
     const id = randomUUID();
     const title = ('Fork: ' + (this.titles.get(this.activeId) || 'New chat')).slice(0, 40);
     this.order.unshift(id); this.titles.set(id, title); this.sessions.set(id, copy);
