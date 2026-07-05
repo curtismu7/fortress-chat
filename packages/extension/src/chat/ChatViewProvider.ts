@@ -17,6 +17,9 @@ import { runAgentTurn } from '../agent/loop';
 import { getOpenRouterKey, setOpenRouterKey, getFireworksKey, setFireworksKey } from '../secrets';
 import { buildContextPreamble, parseMentions, capContent, type ChatContext, type AttachedFile } from '../context';
 import { resolveInWorkspace, editFileWithApproval } from '../agent/tools';
+import { Prefs } from '../prefs';
+import { searchChats } from '../chatSearch';
+import { exportMarkdown } from '../exportChat';
 
 const SYSTEM_PROMPT = 'You are Fortress Code, a helpful local coding assistant.';
 
@@ -34,10 +37,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private poller: ReturnType<typeof setInterval> | null = null;
   private watcherStarted = false;
   private ragIndexing = false;
+  private prefs: Prefs;
 
   constructor(private context: vscode.ExtensionContext, private connect: () => Promise<DaemonClient>) {
     this.store = SessionStore.load(context.workspaceState);
     this.devMode = context.globalState.get<boolean>('fortressCode.devMode', false);
+    this.prefs = new Prefs(this.context.globalState);
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -47,7 +52,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     let html = readFileSync(join(this.context.extensionPath, 'media', 'chat.html'), 'utf8');
     html = html.replace(/\{cspSource\}/g, view.webview.cspSource);
     const bust = `?v=${Date.now()}`; // cache-bust so the webview never serves a stale chat.css/chat.js
-    for (const f of ['chat.css', 'chat.js']) {
+    for (const f of ['chat.css', 'chat.js', 'vendor/katex.min.css', 'vendor/katex.min.js', 'vendor/auto-render.min.js', 'vendor/mermaid.min.js']) {
       html = html.replace(f, view.webview.asWebviewUri(vscode.Uri.joinPath(media, f)).toString() + bust);
     }
     view.webview.html = html;
@@ -79,6 +84,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     try {
       this.client = await this.connect();
       this.post({ type: 'policy', local: localEntries(), openrouter: loadPolicy().filter((e) => e.provider === 'openrouter') });
+      this.post({ type: 'prefs', prompts: this.prefs.prompts(), params: this.prefs.params() });
       this.post({ type: 'openRouterKeySet', set: !!(await getOpenRouterKey(this.context.secrets)) });
       await this.postDev();
       this.post({ type: 'history', messages: this.store.active().messages });
@@ -289,6 +295,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           }
           return;
         }
+        case 'savePrompt': this.prefs.savePrompt(m.prompt); this.post({ type: 'prefs', prompts: this.prefs.prompts(), params: this.prefs.params() }); return;
+        case 'deletePrompt': this.prefs.deletePrompt(String(m.id)); this.post({ type: 'prefs', prompts: this.prefs.prompts(), params: this.prefs.params() }); return;
+        case 'setParams': this.prefs.setParams(m.params ?? {}); this.post({ type: 'prefs', prompts: this.prefs.prompts(), params: this.prefs.params() }); return;
+        case 'forkChat': this.generating?.abort(); this.store.fork(Number(m.index)); this.post({ type: 'history', messages: this.store.active().messages }); this.postChats(); return;
+        case 'searchChats': this.post({ type: 'searchResults', metas: searchChats(String(m.query ?? ''), this.store.metas(), this.store.messagesById()) }); return;
+        case 'exportChat': {
+          const title = this.store.metas().find((x) => x.id === this.store.activeId)?.title ?? 'Chat';
+          const md = exportMarkdown(title, this.store.active().messages, new Date());
+          const uri = await vscode.window.showSaveDialog({ filters: { Markdown: ['md'] }, defaultUri: vscode.Uri.file(title.replace(/[^\w-]+/g, '-') + '.md') });
+          if (uri) await vscode.workspace.fs.writeFile(uri, Buffer.from(md, 'utf8'));
+          return;
+        }
       }
     } catch (e) {
       this.banner(String(e));
@@ -371,6 +389,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.post({ type: 'restoreInput', text });
       return;
     }
+    const params = this.prefs.params();
+    if (Object.keys(params).length) target = { ...target, bodyExtra: { ...target.bodyExtra, ...params } };
     const session = this.store.active();
     const ctx = await this.collectContext(text);
     const preamble = buildContextPreamble(ctx);
