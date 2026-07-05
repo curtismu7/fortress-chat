@@ -29,6 +29,7 @@ export class EmbedSupervisor {
 
   buildArgs(modelPath: string): string[] {
     return [
+      ...(process.env.FC_LLAMA_BIN_ARGS ? [process.env.FC_LLAMA_BIN_ARGS] : []),
       '-m', modelPath, '-ngl', '99', '-c', String(EMBED_CTX),
       '--embedding', '--pooling', 'mean',
       '--host', '127.0.0.1', '--port', String(this.port),
