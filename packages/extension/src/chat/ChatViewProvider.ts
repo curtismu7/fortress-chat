@@ -235,18 +235,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'downloadModel': await (await this.ensureClient()).download(String(m.catalogId)); return;
         case 'indexWorkspace': {
           if (this.ragIndexing) return;
-          const rag = this.ragService();
-          if (!rag) { this.banner('Open a folder to index a codebase.'); return; }
-          const client = await this.ensureClient();
           this.ragIndexing = true;
-          this.post({ type: 'ragProgress', progress: { filesDone: 0, filesTotal: 0, chunksDone: 0, capped: false } });
+          let rag: RagService | null = null;
           try {
+            rag = this.ragService();
+            if (!rag) { this.banner('Open a folder to index a codebase.'); return; }
+            const client = await this.ensureClient();
+            this.post({ type: 'ragProgress', progress: { filesDone: 0, filesTotal: 0, chunksDone: 0, capped: false } });
             await rag.index(client, (p) => this.post({ type: 'ragProgress', progress: p }));
             this.post({ type: 'ragStatus', stats: rag.stats(), indexing: false });
             this.startRagWatcher();
           } catch (e) {
             this.banner(`Indexing failed: ${e instanceof Error ? e.message : e}`);
-            this.post({ type: 'ragStatus', stats: rag.stats(), indexing: false });
+            if (rag) this.post({ type: 'ragStatus', stats: rag.stats(), indexing: false });
           } finally {
             this.ragIndexing = false;
           }
