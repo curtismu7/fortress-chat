@@ -26,7 +26,7 @@ extension, no VS Code required.
 
 ## Repo layout & reuse
 
-```
+```text
 fortress-code-mac/
   vendor/fortress-code        <- git submodule, pinned commit of main repo
   src/main/                   <- Electron main process (TypeScript)
