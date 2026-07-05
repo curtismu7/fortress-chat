@@ -1,15 +1,18 @@
 # Phase 1 — Chat UX Quick Wins: Design
 
+Artifact reference: <https://claude.ai/code/artifact/d8a0d358-2f32-4c15-9258-f1028f9973ac>
+
 **Status:** Approved design
 **Date:** 2026-07-05
-**Scope:** Items 1-7 of the top-15 roadmap
+**Scope:** Items 2-7 of the top-15 roadmap
 (`docs/superpowers/plans/2026-07-05-top15-features-roadmap.md`).
+Personas (item 1) were CUT by user decision — revisit only if requested.
 
 ## Goal
 
-Seven chat-UX features in the shared webview + twinned controllers, shipping
-in BOTH frontends (VS Code extension and Mac app): personas, prompt library,
-model params UI, chat export, chat search, fork-from-message, LaTeX + Mermaid
+Six chat-UX features in the shared webview + twinned controllers, shipping
+in BOTH frontends (VS Code extension and Mac app): prompt library, model
+params UI, chat export, chat search, fork-from-message, LaTeX + Mermaid
 rendering.
 
 ## Architecture
@@ -19,44 +22,34 @@ rendering.
 - **Twinned controllers:** message handling added to BOTH
   `packages/extension/src/chat/ChatViewProvider.ts` and the Mac app's
   `src/main/controller.ts` (kept diffable, same case names).
-- **One new pure module:** `packages/extension/src/prefs.ts` — personas,
-  prompt library, and params storage over the existing `MementoLike`
-  interface (globalState in the extension, `FileMemento` in the app).
-  Vendored by the app like `sessionStore.ts` is.
+- **One new pure module:** `packages/extension/src/prefs.ts` — prompt
+  library and params storage over the existing `MementoLike` interface
+  (globalState in the extension, `FileMemento` in the app). Vendored by the
+  app like `sessionStore.ts` is.
 - **Delivery:** build + ship the extension first; then bump the Mac app's
   submodule pin, re-sync the renderer, twin the controller cases, ship the app.
 
 ## Features
 
-### 1. Personas
-- `Persona { id: string; name: string; systemPrompt: string; params?: Params }`.
-- Header dropdown (next to the model name) lists personas + "Default" +
-  "Manage…". Manage opens an inline editor section (add/edit/delete),
-  same visual pattern as the dev-mode section.
-- Active persona's `systemPrompt` REPLACES the default `SYSTEM_PROMPT`;
-  the context preamble still appends after it.
-- The active persona id is stored per-session (on the session record) so
-  switching chats restores it. Global list stored via `prefs.ts`.
-- NO model binding in v1 (deliberate: model stays the user's pick).
-
-### 2. Prompt library
+### 1. Prompt library
 - `SavedPrompt { id: string; title: string; text: string }` with `{variable}`
   placeholders.
 - Typing `/` in an EMPTY input opens a keyboard-navigable dropdown of saved
   prompts (filter as you type). Picking one inserts `text` into the input and
   selects the first `{variable}` occurrence for overtyping. No modal forms.
-- CRUD lives in the same Manage panel as personas (second tab/section).
+- CRUD via a small "Prompts" manage section (same inline visual pattern as
+  the dev-mode section): add/edit/delete.
 
-### 3. Model params UI
+### 2. Model params UI
 - Gear button in the chat header opens a small popover: temperature (0-2),
   top_p (0-1), max_tokens — each individually settable or "inherit default"
   (unset).
-- Stored globally via `prefs.ts`; a persona's `params` (if set) override
-  globals; unset values are omitted from the request entirely.
+- Stored globally via `prefs.ts`; unset values are omitted from the request
+  entirely.
 - Injection point: merged into the request body via the existing
   `target.bodyExtra` mechanism in `streamChat` callers — no signature change.
 
-### 4. Chat export (Markdown)
+### 3. Chat export (Markdown)
 - "Export" button in the chat header. Renders the active session to Markdown:
   H1 title, ISO date, `## User` / `## Assistant` sections in order, reasoning
   (if stored) inside `<details><summary>Reasoning</summary>…</details>`,
@@ -65,7 +58,7 @@ rendering.
   uses `vscode.window.showSaveDialog`; the app adds a `saveFile` dep to
   `ControllerDeps` (dialog in `main.ts`).
 
-### 5. Chat search
+### 4. Chat search
 - A search input above the chat list; while non-empty, the chat picker shows
   ranked matches instead of the plain list.
 - Matching: case-insensitive substring over titles and message contents;
@@ -77,7 +70,7 @@ rendering.
   selecting a result switches chats (existing `switchChat` message).
 - Folders: DEFERRED (roadmap keeps them; flat searchable list suffices).
 
-### 6. Fork-from-message
+### 5. Fork-from-message
 - A fork button (`⑂` — plain text glyph, allowed) beside each message's
   existing affordances → posts `{ type: 'forkChat', index }`.
 - Controller: copies `messages[0..index]` (inclusive) into a NEW chat titled
@@ -85,7 +78,7 @@ rendering.
   posts `history` + `chats`. Implemented in SessionStore as
   `fork(index: number): void` (unit-tested).
 
-### 7. LaTeX + Mermaid rendering
+### 6. LaTeX + Mermaid rendering
 - Vendor locally into `media/vendor/` (CSP `script-src 'self'` compatible,
   no CDN): KaTeX (+ auto-render extension + fonts/CSS) and Mermaid ESM
   build. ~1.5MB added to the packaged extension — accepted.
@@ -103,21 +96,17 @@ rendering.
 
 ## New webview protocol messages
 
-Inbound (webview → controller): `selectPersona {id|null}`, `savePersona
-{persona}`, `deletePersona {id}`, `savePrompt {prompt}`, `deletePrompt {id}`,
+Inbound (webview → controller): `savePrompt {prompt}`, `deletePrompt {id}`,
 `setParams {params}`, `exportChat {}`, `searchChats {query}`, `forkChat
 {index}`.
-Outbound (controller → webview): `prefs { personas, prompts, params,
-activePersonaId }`, `searchResults { metas }` (ranked ChatMeta list).
+Outbound (controller → webview): `prefs { prompts, params }`,
+`searchResults { metas }` (ranked ChatMeta list).
 All handlers follow the existing banner-on-error pattern.
 
 ## Storage shapes (prefs.ts, one Memento key each)
 
-- `fortressCode.personas`: `Persona[]`
 - `fortressCode.prompts`: `SavedPrompt[]`
 - `fortressCode.params`: `Params` (`{ temperature?, top_p?, max_tokens? }`)
-- Active persona id: per-session field `personaId?: string` on the stored
-  session record (validated schema gains the optional field, like `sources`).
 
 ## Error handling
 
@@ -137,5 +126,5 @@ All handlers follow the existing banner-on-error pattern.
 
 ## Out of scope (v1)
 
-Folders/tags, share links, persona↔model binding, prompt modal forms,
-HTML export, export of non-active chats, KaTeX `trust:true` features.
+Personas (cut by user decision), folders/tags, share links, prompt modal
+forms, HTML export, export of non-active chats, KaTeX `trust:true` features.
