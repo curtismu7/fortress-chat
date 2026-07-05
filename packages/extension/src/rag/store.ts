@@ -97,6 +97,10 @@ export class VectorStore {
     return { files: new Set(this.chunks.map((c) => c.file)).size, chunks: this.chunks.length };
   }
 
+  files(): string[] {
+    return [...new Set(this.chunks.map((c) => c.file))];
+  }
+
   save(): void {
     if (!existsSync(this.dir)) mkdirSync(this.dir, { recursive: true });
     const meta: MetaDoc = { dims: this.dims, model: this.model, chunks: this.chunks };
