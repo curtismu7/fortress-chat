@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { loadPolicy, localEntries, explainBlock, type PolicyEntry, type StatusResponse } from '@fortress-code/shared';
 import { DaemonClient } from '../daemon';
 import { RagService } from '../rag/service';
+import { Debouncer } from '../rag/watcher';
 import { SessionStore } from '../sessionStore';
 import { splitThink } from '../reasoning';
 import { resolveTarget, type ResolvedTarget } from '../providers/target';
@@ -31,6 +32,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private devModel: string | null = null;
   private excluded = new Set<string>();
   private poller: ReturnType<typeof setInterval> | null = null;
+  private watcherStarted = false;
 
   constructor(private context: vscode.ExtensionContext, private connect: () => Promise<DaemonClient>) {
     this.store = SessionStore.load(context.workspaceState);
@@ -187,6 +189,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private startRagWatcher(): void {
+    if (this.watcherStarted) return;
+    const rag = this.ragService();
+    if (!rag) return;
+    this.watcherStarted = true;
+    const debouncer = new Debouncer(1000, async () => {
+      if (!this.client) return;
+      try {
+        await rag.index(this.client, (p) => this.post({ type: 'ragProgress', progress: p }));
+        this.post({ type: 'ragStatus', stats: rag.stats(), indexing: false });
+      } catch { /* transient; next save retries */ }
+    });
+    const watcher = vscode.workspace.createFileSystemWatcher('**/*');
+    const touch = (uri: vscode.Uri) => debouncer.add(uri.fsPath);
+    watcher.onDidChange(touch); watcher.onDidCreate(touch); watcher.onDidDelete(touch);
+    this.context.subscriptions.push(watcher);
+  }
+
   private async onMessage(m: any): Promise<void> {
     try {
       switch (m.type) {
@@ -216,6 +236,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           try {
             await rag.index(client, (p) => this.post({ type: 'ragProgress', progress: p }));
             this.post({ type: 'ragStatus', stats: rag.stats(), indexing: false });
+            this.startRagWatcher();
           } catch (e) {
             this.banner(`Indexing failed: ${e instanceof Error ? e.message : e}`);
             this.post({ type: 'ragStatus', stats: rag.stats(), indexing: false });
