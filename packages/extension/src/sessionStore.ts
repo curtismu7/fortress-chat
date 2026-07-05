@@ -19,6 +19,13 @@ export class SessionStore {
 
   metas(): ChatMeta[] { return this.order.map((id) => ({ id, title: this.titles.get(id) || 'New chat' })); }
   active(): Session { return this.sessions.get(this.activeId)!; }
+  messagesById(): Record<string, ChatMessage[]> {
+    const result: Record<string, ChatMessage[]> = {};
+    for (const [id, session] of this.sessions) {
+      result[id] = session.messages;
+    }
+    return result;
+  }
 
   newChat(): void {
     const id = randomUUID();
@@ -26,6 +33,17 @@ export class SessionStore {
     this.activeId = id; this.save();
   }
   switchTo(id: string): void { if (this.sessions.has(id)) { this.activeId = id; this.save(); } }
+  fork(index: number): void {
+    const src = this.sessions.get(this.activeId);
+    if (!src || src.messages.length === 0 || index < 0) return;
+    const upTo = Math.min(index, src.messages.length - 1);
+    const copy = new Session();
+    copy.messages = src.messages.slice(0, upTo + 1).map((m) => ({ ...m }));
+    const id = randomUUID();
+    const title = ('Fork: ' + (this.titles.get(this.activeId) || 'New chat')).slice(0, 40);
+    this.order.unshift(id); this.titles.set(id, title); this.sessions.set(id, copy);
+    this.activeId = id; this.save();
+  }
   touchTitle(): void {
     const first = this.active().messages.find((m) => m.role === 'user' && m.content.trim());
     if (first && (this.titles.get(this.activeId) || 'New chat') === 'New chat') {
