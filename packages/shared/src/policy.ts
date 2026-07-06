@@ -51,6 +51,12 @@ export function openRouterEntries(): PolicyEntry[] {
       hosting: { kind: 'openrouter', usProviders: ['together', 'fireworks', 'lambda'] },
       approved: true, openrouter: { slug: 'meta-llama/llama-3.3-70b-instruct', contextLength: 131072 },
     },
+    {
+      id: 'or-llama-4-maverick', displayName: 'Llama 4 Maverick (OpenRouter)', provider: 'openrouter', agentCapable: true,
+      origin: { org: 'Meta', country: 'US' },
+      hosting: { kind: 'openrouter', usProviders: ['deepinfra', 'digitalocean', 'google-vertex', 'parasail', 'novita'] },
+      approved: true, openrouter: { slug: 'meta-llama/llama-4-maverick', contextLength: 1048576 },
+    },
   ];
 }
 

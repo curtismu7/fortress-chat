@@ -16,20 +16,29 @@ export class RagService {
   async index(client: DaemonClient, onProgress: (p: IndexProgress) => void, signal?: AbortSignal): Promise<void> {
     const started = await client.embedStart();
     if (!started.ok) throw new Error('embedding server could not start (check RAM or download the embed model)');
-    await indexWorkspace(this.root, this.store, (t) => client.embed(t), onProgress, signal);
+    try {
+      await indexWorkspace(this.root, this.store, (t) => client.embed(t), onProgress, signal);
+    } finally {
+      await client.embedStop().catch(() => {});
+    }
   }
 
   async retrieveHits(client: DaemonClient, query: string): Promise<{ file: string; startLine: number; endLine: number; text: string }[]> {
     if (!this.hasIndex()) return [];
-    await client.embedStart();
-    const hits = await retrieve(query, this.store, (t) => client.embed(t), 8);
-    return hits.map((h) => {
-      let text = '';
-      try {
-        const lines = readFileSync(join(this.root, h.file), 'utf8').split('\n');
-        text = lines.slice(h.startLine - 1, h.endLine).join('\n');
-      } catch { /* file gone; skip body */ }
-      return { ...h, text };
-    }).filter((h) => h.text);
+    const started = await client.embedStart();
+    if (!started.ok) return [];
+    try {
+      const hits = await retrieve(query, this.store, (t) => client.embed(t), 8);
+      return hits.map((h) => {
+        let text = '';
+        try {
+          const lines = readFileSync(join(this.root, h.file), 'utf8').split('\n');
+          text = lines.slice(h.startLine - 1, h.endLine).join('\n');
+        } catch { /* file gone; skip body */ }
+        return { ...h, text };
+      }).filter((h) => h.text);
+    } finally {
+      await client.embedStop().catch(() => {});
+    }
   }
 }

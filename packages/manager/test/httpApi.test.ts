@@ -18,6 +18,7 @@ function req(path: string, opts: RequestInit = {}, token = TOKEN) {
 }
 
 beforeEach(async () => {
+  available = 40 * 1024 ** 3;
   process.env.FC_DATA_DIR = mkdtempSync(join(tmpdir(), 'fc-api-'));
   process.env.FC_LLAMA_BIN = process.execPath;
   process.env.FC_LLAMA_BIN_ARGS = STUB;
@@ -26,6 +27,12 @@ beforeEach(async () => {
   const dir = join(process.env.FC_DATA_DIR, 'models', m.id);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, m.files[0].name), 'fake');
+  const embed = loadCatalog().find((x) => x.embedding);
+  if (embed) {
+    const edir = join(process.env.FC_DATA_DIR, 'models', embed.id);
+    mkdirSync(edir, { recursive: true });
+    writeFileSync(join(edir, embed.files[0].name), 'fake');
+  }
   server = createApi({ supervisor: new Supervisor(), embed: new EmbedSupervisor(), token: TOKEN, onActivity: () => {}, availableBytes: async () => available });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -61,5 +68,26 @@ describe('start with memory guard', () => {
   it('428 when model not downloaded', async () => {
     const res = await req('/start', { method: 'POST', body: JSON.stringify({ modelId: 'gpt-oss-120b' }) });
     expect(res.status).toBe(428);
+  });
+
+  it('one-model policy: starting chat unloads embed', async () => {
+    const chat = loadCatalog()[0];
+    const embed = loadCatalog().find((x) => x.embedding)!;
+    expect((await req('/embed/start', { method: 'POST', body: '{}' })).status).toBe(200);
+    expect((await (await req('/status')).json()).embed.state).toBe('ready');
+    expect((await req('/start', { method: 'POST', body: JSON.stringify({ modelId: chat.id }) })).status).toBe(200);
+    const status = await (await req('/status')).json();
+    expect(status.state).toBe('ready');
+    expect(status.embed.state).toBe('idle');
+    expect(status.modelId).toBe(chat.id);
+  });
+
+  it('one-model policy: starting embed unloads chat', async () => {
+    const chat = loadCatalog()[0];
+    expect((await req('/start', { method: 'POST', body: JSON.stringify({ modelId: chat.id }) })).status).toBe(200);
+    expect((await req('/embed/start', { method: 'POST', body: '{}' })).status).toBe(200);
+    const status = await (await req('/status')).json();
+    expect(status.state).toBe('idle');
+    expect(status.embed.state).toBe('ready');
   });
 });

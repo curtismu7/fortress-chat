@@ -237,6 +237,21 @@ input, textarea, select {
   gap: 8px;
   font-size: 12px;
 }
+.banner-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+#banner-text { line-height: 1.45; }
+.banner-retry {
+  align-self: flex-start;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.banner-retry:disabled { opacity: 0.6; cursor: default; }
+.banner-retry[hidden] { display: none !important; }
 #banner[hidden] { display: none !important; }
 
 .composer-box {

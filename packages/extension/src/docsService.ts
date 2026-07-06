@@ -22,40 +22,50 @@ export class DocsService {
 
   /** Index selected text files into the docs vector store. */
   async indexFiles(client: DaemonClient, paths: string[], onProgress?: (n: number, total: number) => void): Promise<number> {
-    await client.embedStart();
-    let n = 0;
-    for (const abs of paths) {
-      n++;
-      onProgress?.(n, paths.length);
-      if (!existsSync(abs)) continue;
-      const ext = abs.slice(abs.lastIndexOf('.')).toLowerCase();
-      if (!DOC_EXT.has(ext)) continue;
-      let text: string;
-      try { text = readFileSync(abs, 'utf8'); } catch { continue; }
-      const rel = abs;
-      const h = sha(text);
-      if (this.store.hashOf(rel) === h) continue;
-      const chunks = chunkFile(text);
-      if (!chunks.length) { this.store.replaceFile(rel, h, []); continue; }
-      const vectors = await client.embed(chunks.map((c) => `search_document: ${c.text}`));
-      this.store.replaceFile(rel, h, chunks.map((c, i) => ({ meta: { startLine: c.startLine, endLine: c.endLine }, vector: vectors[i] })));
+    const started = await client.embedStart();
+    if (!started.ok) throw new Error('embedding server could not start (check RAM or download the embed model)');
+    try {
+      let n = 0;
+      for (const abs of paths) {
+        n++;
+        onProgress?.(n, paths.length);
+        if (!existsSync(abs)) continue;
+        const ext = abs.slice(abs.lastIndexOf('.')).toLowerCase();
+        if (!DOC_EXT.has(ext)) continue;
+        let text: string;
+        try { text = readFileSync(abs, 'utf8'); } catch { continue; }
+        const rel = abs;
+        const h = sha(text);
+        if (this.store.hashOf(rel) === h) continue;
+        const chunks = chunkFile(text);
+        if (!chunks.length) { this.store.replaceFile(rel, h, []); continue; }
+        const vectors = await client.embed(chunks.map((c) => `search_document: ${c.text}`));
+        this.store.replaceFile(rel, h, chunks.map((c, i) => ({ meta: { startLine: c.startLine, endLine: c.endLine }, vector: vectors[i] })));
+      }
+      this.store.save();
+      return paths.length;
+    } finally {
+      await client.embedStop().catch(() => {});
     }
-    this.store.save();
-    return paths.length;
   }
 
   /** Retrieve doc chunks for @docs queries. */
   async retrieveHits(client: DaemonClient, query: string): Promise<{ file: string; startLine: number; endLine: number; text: string }[]> {
     if (!this.hasIndex()) return [];
-    await client.embedStart();
-    const hits = await retrieve(query, this.store, (t) => client.embed(t), 6);
-    return hits.map((h) => {
-      let text = '';
-      try {
-        const lines = readFileSync(h.file, 'utf8').split('\n');
-        text = lines.slice(h.startLine - 1, h.endLine).join('\n');
-      } catch { /* gone */ }
-      return { ...h, text };
-    }).filter((h) => h.text);
+    const started = await client.embedStart();
+    if (!started.ok) return [];
+    try {
+      const hits = await retrieve(query, this.store, (t) => client.embed(t), 6);
+      return hits.map((h) => {
+        let text = '';
+        try {
+          const lines = readFileSync(h.file, 'utf8').split('\n');
+          text = lines.slice(h.startLine - 1, h.endLine).join('\n');
+        } catch { /* gone */ }
+        return { ...h, text };
+      }).filter((h) => h.text);
+    } finally {
+      await client.embedStop().catch(() => {});
+    }
   }
 }

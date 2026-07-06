@@ -584,12 +584,20 @@ window.addEventListener('message', (e) => {
   if (m.type === 'restoreInput') { $('input').value = m.text; resetInputHistoryBrowse(); resizeInput(); }
   if (m.type === 'error') {
     if (m.message) {
-      $('banner-text').textContent = m.message; $('banner').hidden = false;
+      $('banner-text').textContent = m.message;
+      $('banner').hidden = false;
       clearTimeout(window.__bannerTimer);
-      window.__bannerTimer = setTimeout(() => { $('banner').hidden = true; }, 7000);
+      const retry = $('banner-retry');
+      if (!retry || retry.hidden) {
+        window.__bannerTimer = setTimeout(() => { $('banner').hidden = true; }, 12000);
+      }
     } else { $('banner').hidden = true; }
   }
-  if (m.type === 'clearBanner') $('banner').hidden = true;
+  if (m.type === 'clearBanner') {
+    $('banner').hidden = true;
+    const retry = $('banner-retry');
+    if (retry) retry.hidden = true;
+  }
   if (m.type === 'token') appendToken(m.text);
   if (m.type === 'context') {
     $('chips').innerHTML = (m.chips || []).map((c) => `<span class="chip">${esc(c.label)}<button data-chip="${esc(c.id)}">×</button></span>`).join('');
@@ -811,22 +819,26 @@ function renderRejection(r, modelId) {
     setup.hidden = true;
     setup.innerHTML = '';
   }
+  window.__pendingModelId = modelId;
+  window.__pendingKillPids = (r.foreign || []).map((p) => p.pid);
   const msg = r.wouldFitAfterForeignKill
-    ? `Not enough memory (~${need} GB needed, ${have} GB free). Stop other llama-server processes and retry.`
+    ? `Not enough memory (~${need} GB needed, ${have} GB free). Another llama-server is using RAM.`
     : `Not enough memory (~${need} GB needed, ${have} GB free). Try a smaller model.`;
   $('banner-text').innerHTML = `${esc(msg)}${r.foreign.length ? `<ul style="margin:8px 0 0;padding-left:18px">${rows}</ul>` : ''}`;
-  $('banner').hidden = false;
-  if (r.wouldFitAfterForeignKill) {
-    const retry = document.createElement('button');
-    retry.type = 'button';
+  const retry = $('banner-retry');
+  if (retry) {
+    retry.hidden = !r.wouldFitAfterForeignKill;
+    retry.disabled = false;
     retry.textContent = 'Stop other models and retry';
-    retry.style.marginTop = '8px';
     retry.onclick = () => {
-      vscode.postMessage({ type: 'killForeign', pids: r.foreign.map((p) => p.pid) });
-      setTimeout(() => vscode.postMessage({ type: 'selectModel', id: modelId }), 1500);
+      retry.disabled = true;
+      retry.textContent = 'Stopping other models…';
+      $('banner-text').textContent = 'Stopping other llama-server processes…';
+      vscode.postMessage({ type: 'retryModelAfterKill', pids: window.__pendingKillPids || [], modelId: window.__pendingModelId });
     };
-    $('banner-text').appendChild(retry);
   }
+  $('banner').hidden = false;
+  clearTimeout(window.__bannerTimer);
   if (window.__status) renderState(window.__status);
 }
 

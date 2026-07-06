@@ -34,6 +34,16 @@ function send(res: ServerResponse, code: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+/** True when a chat llama-server is loaded or still starting. */
+function chatActive(state: string): boolean {
+  return state === 'ready' || state === 'loading-model' || state === 'starting';
+}
+
+/** True when the embed llama-server is loaded or still starting. */
+function embedActive(state: string): boolean {
+  return state === 'ready' || state === 'starting';
+}
+
 export function createApi(deps: ApiDeps): Server {
   const catalog = loadCatalog();
   let download: DownloadProgress | null = null;
@@ -92,9 +102,8 @@ export function createApi(deps: ApiDeps): Server {
           const m = catalog.find((x) => x.id === modelId);
           if (!m) return send(res, 404, { error: 'unknown model' });
           if (!binaryInstalled() || !modelDownloaded(m)) return send(res, 428, { error: 'binary or model not downloaded' });
-          if (deps.supervisor.state === 'ready' || deps.supervisor.state === 'loading-model') {
-            await deps.supervisor.stop(); // one-model policy: replace our own automatically
-          }
+          if (embedActive(deps.embed.state)) await deps.embed.stop(); // one-model policy: unload embed first
+          if (chatActive(deps.supervisor.state)) await deps.supervisor.stop(); // replace any loaded chat model
           const available = await deps.availableBytes();
           const fit = checkFit(m.memoryBytes, available, totalRamBytes());
           if (!fit.fits) {
@@ -130,6 +139,7 @@ export function createApi(deps: ApiDeps): Server {
           const m = catalog.find((x) => x.embedding);
           if (!m) return send(res, 404, { error: 'no embedding model in catalog' });
           if (!binaryInstalled() || !modelDownloaded(m)) return send(res, 428, { error: 'embed model not downloaded' });
+          if (chatActive(deps.supervisor.state)) await deps.supervisor.stop(); // one-model policy: unload chat first
           if (deps.embed.state === 'ready') return send(res, 200, {});
           const available = await deps.availableBytes();
           const fit = checkFit(m.memoryBytes, available, totalRamBytes());
