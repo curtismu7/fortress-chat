@@ -9,17 +9,17 @@ document.addEventListener('click', (e) => {
 });
 let streaming = '';
 let provider = 'local';
-let policy = { local: [], openrouter: [] };
+let policy = { local: [], hidden: [], openrouter: [] };
 let selectedId = null;
 
 function openModelPicker() {
   closeSettings(false);
   const p = $('model-picker');
-  if (p) { p.hidden = false; window.__modelPickerOpen = true; }
+  if (p) { p.hidden = false; window.__modelPickerOpen = true; window.__modelPickerPinned = true; }
 }
 function closeModelPicker() {
   const p = $('model-picker');
-  if (p) { p.hidden = true; window.__modelPickerOpen = false; }
+  if (p) { p.hidden = true; window.__modelPickerOpen = false; window.__modelPickerPinned = false; }
 }
 
 let chatMode = 'ask';
@@ -474,8 +474,9 @@ function renderModels(status) {
   const box = $('models');
   if (!box) return;
   const local = policy.local || [];
+  const hidden = policy.hidden || [];
   const cloud = window.__orKeySet ? (policy.openrouter || []) : [];
-  const all = [...local, ...cloud];
+  const all = [...local, ...hidden, ...cloud];
   const row = (m) => {
     const meta = modelRowMeta(m, status);
     const sel = m.id === selectedId;
@@ -488,8 +489,12 @@ function renderModels(status) {
       ${sel ? '<span class="model-row-check">✓</span>' : (meta.action ? `<span class="model-row-action">${esc(meta.action)}</span>` : '')}
     </button>`;
   };
+  const hiddenOpen = window.__hiddenModelsOpen !== false;
   box.innerHTML = local.map(row).join('') +
+    (hidden.length ? `<details class="model-hidden-group"${hiddenOpen ? ' open' : ''}><summary class="model-group-label">Hidden models</summary><div class="model-hidden-list">${hidden.map(row).join('')}</div></details>` : '') +
     (cloud.length ? `<div class="model-group-label">Cloud models</div>${cloud.map(row).join('')}` : '');
+  const hiddenGroup = box.querySelector('.model-hidden-group');
+  if (hiddenGroup) hiddenGroup.addEventListener('toggle', () => { window.__hiddenModelsOpen = hiddenGroup.open; });
   box.querySelectorAll('.model-row').forEach((el) => {
     el.onclick = () => {
       const m = all.find((x) => x.id === el.dataset.id);
@@ -498,7 +503,6 @@ function renderModels(status) {
         vscode.postMessage({ type: 'downloadModel', catalogId: m.local.catalogId });
         return;
       }
-      closeModelPicker();
       selectedId = m.id;
       if (window.__status) renderState(window.__status);
       vscode.postMessage({ type: 'selectModel', id: m.id });
@@ -530,7 +534,7 @@ function renderState(status) {
     setup.hidden = true;
   }
 
-  const m = selectedId ? [...(policy.local || []), ...(policy.openrouter || [])].find((x) => x.id === selectedId) : null;
+  const m = selectedId ? [...(policy.local || []), ...(policy.hidden || []), ...(policy.openrouter || [])].find((x) => x.id === selectedId) : null;
   const loading = !!m && m.provider === 'local' && (status.state === 'starting' || status.state === 'loading-model');
   const ready = !!m && (m.provider === 'openrouter' ? true : status.state === 'ready');
   const engineReady = status.binaryInstalled || window.__orKeySet;
@@ -560,7 +564,6 @@ function renderState(status) {
     agentEl.disabled = !m || !m.agentCapable;
     if (agentEl.disabled) agentEl.checked = false;
   }
-  if (selectedId && window.__modelPickerOpen) closeModelPicker();
   if (!selectedId && !window.__pickerShown) { window.__pickerShown = true; openModelPicker(); }
 }
 
@@ -571,7 +574,7 @@ function setProvider(p) {
 
 window.addEventListener('message', (e) => {
   const m = e.data;
-  if (m.type === 'policy') { policy = { local: m.local, openrouter: m.openrouter }; if (window.__status) renderState(window.__status); }
+  if (m.type === 'policy') { policy = { local: m.local, hidden: m.hidden || [], openrouter: m.openrouter }; if (window.__status) renderState(window.__status); }
   if (m.type === 'openRouterKeySet') {
     window.__orKeySet = m.set;
     if (window.__status) renderState(window.__status);
@@ -579,7 +582,16 @@ window.addEventListener('message', (e) => {
   if (m.type === 'state') { selectedId = m.selectedId; renderState(m.status); }
   if (m.type === 'history') renderHistory(m.messages);
   if (m.type === 'startRejected') renderRejection(m.rejection, m.modelId);
-  if (m.type === 'addBlocked') { $('add-blocked').hidden = false; $('add-blocked').innerHTML = `<b style="color:#e07a7a">⛔ Blocked by policy</b><p>${esc(m.reason)}</p><span class="b">✗ non-US</span><p style="margin-top:6px">Approved US models are listed above, or request an addition.</p>`; }
+  if (m.type === 'addBlocked') { $('add-blocked').hidden = false; $('add-blocked').innerHTML = `<b style="color:#e07a7a">⛔ Blocked by policy</b><p>${esc(m.reason)}</p><span class="b">✗ non-US</span><p style="margin-top:6px">Local US models are listed in the model picker.</p>`; }
+  if (m.type === 'policyFatal') {
+    const overlay = $('policy-fatal');
+    const text = $('policy-fatal-text');
+    if (overlay && text) {
+      text.textContent = m.message || 'This model is not allowed.';
+      overlay.hidden = false;
+      document.body.classList.add('policy-stopped');
+    }
+  }
   if (m.type === 'addAccepted') { $('add-blocked').hidden = false; $('add-blocked').innerHTML = `<p>${esc(m.slug)} is already on the approved list — select it above.</p>`; }
   if (m.type === 'restoreInput') { $('input').value = m.text; resetInputHistoryBrowse(); resizeInput(); }
   if (m.type === 'error') {
@@ -863,8 +875,11 @@ function renderSidebar(metas, activeId) {
   list.innerHTML = items.map((c) => {
     const isActive = c.id === active;
     const badge = c.agentMode ? '<span class="agent-badge" title="Agent chat">Agent</span>' : '';
-    return `<button type="button" class="chat-item${isActive ? ' active' : ''}" data-id="${esc(c.id)}" title="${esc(c.title || 'New chat')}">`
-      + `<span class="chat-item-title">${esc(c.title || 'New chat')}</span>${badge}</button>`;
+    return `<div class="chat-item-wrap${isActive ? ' active' : ''}">`
+      + `<button type="button" class="chat-item" data-id="${esc(c.id)}" title="${esc(c.title || 'New chat')}">`
+      + `<span class="chat-item-title">${esc(c.title || 'New chat')}</span>${badge}</button>`
+      + `<button type="button" class="chat-item-menu" data-id="${esc(c.id)}" title="Chat actions" aria-label="Chat actions">⋯</button>`
+      + `</div>`;
   }).join('');
 }
 
@@ -883,7 +898,7 @@ function promptLabel(p) {
 
 function fillComparePicker() {
   const pick = $('compare-picker'); if (!pick) return;
-  const models = [...(policy.local || []), ...(policy.openrouter || [])];
+  const models = [...(policy.local || []), ...(policy.hidden || []), ...(policy.openrouter || [])];
   pick.innerHTML = '<option value="">No compare</option>' + models.map((m) => `<option value="${m.id}">${esc(m.displayName)}</option>`).join('');
 }
 
@@ -1009,7 +1024,8 @@ function mentionAtCursor() {
 }
 
 function openSettings(open) {
-  if (open) closeModelPicker();
+  if (open && window.__modelPickerPinned) { /* keep model list open */ }
+  else if (open) closeModelPicker();
   const panel = $('settings-panel');
   const scrim = $('settings-scrim');
   if (!panel || !scrim) return;
@@ -1134,6 +1150,23 @@ $('chat-picker').onchange = (e) => { turnReasoning = ''; vscode.postMessage({ ty
   vscode.postMessage({ type: 'searchChats', query: q, folder: '' });
 }; }
 { const _cl = $('chat-list'); if (_cl) _cl.onclick = (e) => {
+  const menuBtn = e.target.closest('.chat-item-menu');
+  if (menuBtn) {
+    e.stopPropagation();
+    const id = menuBtn.getAttribute('data-id');
+    if (!id) return;
+    const metas = (window.__lastChats && window.__lastChats.metas) || [];
+    const chat = metas.find((c) => c.id === id);
+    const title = chat?.title || 'New chat';
+    const next = window.prompt('Rename chat (or type DELETE to remove):', title);
+    if (next == null) return;
+    if (next.trim().toUpperCase() === 'DELETE') {
+      if (window.confirm(`Delete "${title}"?`)) vscode.postMessage({ type: 'deleteChat', id });
+      return;
+    }
+    if (next.trim() && next.trim() !== title) vscode.postMessage({ type: 'renameChat', id, title: next.trim() });
+    return;
+  }
   const item = e.target.closest('.chat-item'); if (!item) return;
   const id = item.getAttribute('data-id'); if (!id) return;
   turnReasoning = ''; vscode.postMessage({ type: 'switchChat', id });

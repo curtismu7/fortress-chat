@@ -139,4 +139,25 @@ describe('SessionStore', () => {
     s.setAgentMode(id, false);
     expect(s.metas().find((m) => m.id === id)?.agentMode).toBeUndefined();
   });
+
+  it('deleteChat removes a chat and switches active when needed', () => {
+    const s = SessionStore.load(mem());
+    const first = s.activeId;
+    s.newChat();
+    const doomed = s.activeId;
+    s.newChat();
+    expect(s.metas().length).toBe(3);
+    s.deleteChat(doomed);
+    expect(s.metas().some((m) => m.id === doomed)).toBe(false);
+    expect(s.metas().length).toBe(2);
+    expect(s.activeId).not.toBe(doomed);
+    expect([first, s.activeId]).not.toContain(doomed);
+  });
+
+  it('renameChat updates the sidebar title', () => {
+    const s = SessionStore.load(mem());
+    const id = s.activeId;
+    s.renameChat(id, 'My renamed chat');
+    expect(s.metas().find((m) => m.id === id)?.title).toBe('My renamed chat');
+  });
 });

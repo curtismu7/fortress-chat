@@ -2,13 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { loadCatalog } from '../src/catalog';
 
 describe('catalog', () => {
-  it('loads and validates all seven models', () => {
+  it('loads and validates all catalog models including hidden', () => {
     const models = loadCatalog();
-    expect(models).toHaveLength(7);
+    expect(models).toHaveLength(8);
     const ids = models.map((m) => m.id);
     expect(ids).toContain('gemma-3-12b-qat');
     expect(ids).toContain('gpt-oss-20b');
     expect(ids).toContain('nomic-embed-text-v1.5');
+    expect(ids).toContain('qwythos-9b-q4');
   });
 
   it('every model pins sha256 for every file', () => {

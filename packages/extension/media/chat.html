@@ -188,12 +188,9 @@
         <button type="button" id="persona-save">Save persona</button>
       </details>
 
-      <details class="settings-section">
+      <details class="settings-section" hidden aria-hidden="true">
         <summary>Cloud models</summary>
-        <div id="or-key"><input id="or-key-input" type="password" placeholder="OpenRouter API key" /><button id="or-key-save">Save</button></div>
-        <div id="add-row"><input id="add-slug" placeholder="Add OpenRouter model slug" /><button id="add-btn">Add</button></div>
-        <div id="add-blocked" hidden></div>
-        <p class="settings-hint">Cloud models appear in the model picker after you save a key.</p>
+        <p class="settings-hint">FortressChat supports local US models only.</p>
       </details>
 
       <details class="settings-section">
@@ -204,19 +201,20 @@
         <button type="button" id="undo-agent" disabled>Undo last agent edits</button>
       </details>
 
-      <details class="settings-section" id="dev-settings" hidden>
+      <details class="settings-section" id="dev-settings" hidden aria-hidden="true">
         <summary>Developer</summary>
-        <div class="devbanner">Developer mode — governance bypassed</div>
-        <div id="fw-key-row"><input id="fw-key" type="password" placeholder="Fireworks API key" /><button id="fw-key-save">Save</button></div>
-        <div class="devrow">
-          <select id="dev-preset"></select>
-          <input id="dev-slug" placeholder="Fireworks model slug" />
-          <button id="dev-use">Use</button>
-        </div>
+        <p class="settings-hint">Developer mode is disabled. Local US models only.</p>
       </details>
     </div>
   </aside>
   <div id="settings-scrim" hidden></div>
+  <div id="policy-fatal" hidden role="alertdialog" aria-modal="true" aria-labelledby="policy-fatal-title">
+    <div class="policy-fatal-card">
+      <h2 id="policy-fatal-title">Not allowed</h2>
+      <p id="policy-fatal-text"></p>
+      <p class="policy-fatal-hint">FortressChat supports local US models only.</p>
+    </div>
+  </div>
 
   <link rel="stylesheet" href="vendor/katex.min.css" />
   <script src="vendor/katex.min.js"></script>

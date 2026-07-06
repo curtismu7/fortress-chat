@@ -89,6 +89,32 @@ export class SessionStore {
     this.activeId = id; this.save();
   }
   switchTo(id: string): void { if (this.sessions.has(id)) { this.activeId = id; this.save(); } }
+
+  /** Remove a chat and switch to another if the active chat was deleted. */
+  deleteChat(id: string): void {
+    if (!this.sessions.has(id)) return;
+    this.sessions.delete(id);
+    this.order = this.order.filter((x) => x !== id);
+    this.titles.delete(id);
+    this.folders.delete(id);
+    this.personaIds.delete(id);
+    this.skillIds.delete(id);
+    this.agentModes.delete(id);
+    if (this.activeId === id) {
+      if (this.order.length) this.activeId = this.order[0]!;
+      else this.newChat();
+    }
+    this.save();
+  }
+
+  /** Rename a chat title shown in the sidebar. */
+  renameChat(id: string, title: string): void {
+    if (!this.sessions.has(id)) return;
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    this.titles.set(id, trimmed.slice(0, 80));
+    this.save();
+  }
   fork(index: number): void {
     const src = this.sessions.get(this.activeId);
     if (!src || src.messages.length === 0 || index < 0) return;

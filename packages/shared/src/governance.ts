@@ -10,7 +10,7 @@ export interface PolicyEntry {
   origin: Origin;
   hosting: Hosting;
   approved: boolean;
-  local?: { catalogId: string };
+  local?: { catalogId: string; hidden?: boolean };
   openrouter?: { slug: string; contextLength: number };
 }
 

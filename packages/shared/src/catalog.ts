@@ -9,7 +9,8 @@ const fileSchema = z.object({
 
 const modelSchema = z.object({
   id: z.string(),
-  family: z.enum(['gemma3', 'gpt-oss', 'embedding']),
+  family: z.enum(['gemma3', 'gpt-oss', 'embedding', 'qwythos']),
+  hidden: z.boolean().optional(),
   displayName: z.string(),
   hfRepo: z.string(),
   files: z.array(fileSchema).min(1),
