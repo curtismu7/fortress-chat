@@ -245,6 +245,36 @@ input, textarea, select {
   box-shadow: 0 2px 12px rgba(0,0,0,.12);
   position: relative;
 }
+.composer-status {
+  font-size: 11px;
+  color: var(--vscode-foreground, #fff);
+  padding: 6px 4px 0;
+  min-height: 16px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-status[hidden] { display: none !important; }
+.composer-status.active { color: var(--vscode-foreground, #fff); }
+.composer-status.warn { color: #d6a85b; }
+.composer-status.active::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  margin-right: 6px;
+  animation: fc-pulse 1.2s ease-in-out infinite;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+@keyframes fc-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
 .composer-input-row {
   display: flex;
   align-items: flex-end;

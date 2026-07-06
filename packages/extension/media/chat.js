@@ -310,6 +310,8 @@ function queueLabel(text) {
 }
 
 function renderPromptQueue(items) {
+  queueCount = items?.length || 0;
+  updateComposerStatus();
   const box = $('prompt-queue');
   if (!box) return;
   if (!items || !items.length) { box.hidden = true; box.innerHTML = ''; return; }
@@ -322,12 +324,53 @@ function renderPromptQueue(items) {
   });
 }
 
+let lastAgentStep = '';
+let queueCount = 0;
+
+/** Refresh the activity line under the composer from current turn state. */
+function updateComposerStatus() {
+  const el = $('composer-status');
+  if (!el) return;
+  let text = '';
+  let active = false;
+  if (window.__generating) {
+    active = true;
+    if (lastAgentStep) text = lastAgentStep;
+    else if (turnReasoning && !streaming) text = 'Reasoning…';
+    else if (streaming) text = 'Writing…';
+    else text = 'Thinking…';
+  } else {
+    const input = $('input');
+    const win = window.__ctxWindow || 8192;
+    const est = Math.ceil(((input?.value || '').length + 200) / 4);
+    if (input?.value.trim()) {
+      text = `~${(est / 1000).toFixed(1)}k / ${Math.round(win / 1000)}k tokens`;
+      el.classList.toggle('warn', est > win * 0.9);
+    } else el.classList.remove('warn');
+  }
+  if (queueCount > 0) {
+    const q = `${queueCount} message${queueCount === 1 ? '' : 's'} queued`;
+    text = text ? `${text} · ${q}` : q;
+  }
+  if (!text) {
+    el.hidden = true;
+    el.textContent = '';
+    el.classList.remove('active');
+    return;
+  }
+  el.hidden = false;
+  el.textContent = text;
+  el.classList.toggle('active', active);
+}
+
 function setGenerating(active) {
   window.__generating = !!active;
   const cancel = $('cancel');
   const send = $('send');
   if (cancel) cancel.hidden = !active;
   if (send) send.title = active ? 'Queue message (sends after current reply)' : 'Send';
+  if (!active) { lastAgentStep = ''; }
+  updateComposerStatus();
 }
 
 let cbCodes = [];
@@ -534,7 +577,12 @@ window.addEventListener('message', (e) => {
     $('chips').innerHTML = (m.chips || []).map((c) => `<span class="chip">${esc(c.label)}<button data-chip="${esc(c.id)}">×</button></span>`).join('');
     document.querySelectorAll('#chips button').forEach((b) => b.onclick = () => vscode.postMessage({ type: 'excludeContext', id: b.dataset.chip }));
   }
-  if (m.type === 'agentStep') { $('steps').hidden = false; $('steps').innerHTML += `<div>${esc(m.step)}</div>`; }
+  if (m.type === 'agentStep') {
+    $('steps').hidden = false;
+    $('steps').innerHTML += `<div>${esc(m.step)}</div>`;
+    lastAgentStep = m.step;
+    updateComposerStatus();
+  }
   if (m.type === 'reasoning') appendReasoning(m.text);
   if (m.type === 'reasoningDone') { const b = document.querySelector('.reasoning-live'); if (b) b.open = false; }
   if (m.type === 'usage' && m.usage) { const u = $('usage-last'); if (u) u.textContent = `↑${m.usage.promptTokens} ↓${m.usage.completionTokens} tok`; }
@@ -711,7 +759,9 @@ function appendToken(t) {
   streaming += t;
   let el = document.querySelector('.msg.streaming pre');
   if (!el) { const d = document.createElement('div'); d.className = 'msg assistant streaming'; d.innerHTML = '<pre></pre>'; $('messages').appendChild(d); el = d.querySelector('pre'); }
-  el.textContent = streaming; $('messages').scrollTop = $('messages').scrollHeight;
+  el.textContent = streaming;
+  $('messages').scrollTop = $('messages').scrollHeight;
+  updateComposerStatus();
 }
 let turnReasoning = '';
 function appendReasoning(t) {
@@ -725,6 +775,7 @@ function appendReasoning(t) {
   }
   box.querySelector('pre').textContent = turnReasoning;
   $('messages').scrollTop = $('messages').scrollHeight;
+  updateComposerStatus();
 }
 function updateMeter() {
   const win = window.__ctxWindow || 8192;
@@ -732,6 +783,7 @@ function updateMeter() {
   const el = $('meter'); if (!el) return;
   el.textContent = `~${(est / 1000).toFixed(1)}k / ${Math.round(win / 1000)}k tokens`;
   el.classList.toggle('warn', est > win * 0.9);
+  updateComposerStatus();
 }
 function renderRejection(r, modelId) {
   const need = Math.round(r.requiredBytes / 2 ** 30), have = Math.round(r.availableBytes / 2 ** 30);
@@ -997,7 +1049,8 @@ $('send').onclick = () => {
   if (slash[cmd]) { const rest = t.slice(cmd.length).trim(); t = slash[cmd] + (rest ? ' ' + rest : ''); }
   $('input').value = ''; $('banner').hidden = true; $('steps').innerHTML = ''; $('steps').hidden = true;
   closeSlashMenu(); closeMentionMenu(); closeActionMenu(); resetInputHistoryBrowse();
-  turnReasoning = ''; vscode.postMessage({ type: 'send', text: t }); if (!window.__generating) setGenerating(true); updateMeter(); resizeInput();
+  turnReasoning = ''; lastAgentStep = ''; streaming = '';
+  vscode.postMessage({ type: 'send', text: t }); if (!window.__generating) setGenerating(true); updateMeter(); resizeInput();
 };
 $('cancel').onclick = () => { vscode.postMessage({ type: 'cancel' }); setGenerating(false); };
 $('new-chat').onclick = () => { turnReasoning = ''; closeSettings(false); resetInputHistoryBrowse(); vscode.postMessage({ type: 'newChat' }); };
