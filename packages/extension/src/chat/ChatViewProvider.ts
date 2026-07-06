@@ -26,11 +26,23 @@ import { DocsService } from '../docsService';
 import { McpClient, parseMcpConfigs } from '../mcpClient';
 import { webSearch } from '../webSearch';
 import { speakText } from '../voice';
+import { loadProjectRules, defaultRulesRel } from '../projectRules';
+import { AgentCheckpoint } from '../agentCheckpoint';
+import { mentionCandidates } from '../mentionFiles';
 
 const SYSTEM_PROMPT = 'You are Fortress Code, a helpful local coding assistant.';
 
+const MODE_PROMPTS: Record<string, string> = {
+  plan: 'You are in plan mode. Outline a clear step-by-step plan before editing files. Discuss tradeoffs and wait for confirmation before applying changes unless the user asked you to implement immediately.',
+  debug: 'You are in debug mode. Focus on reproducing the issue, tracing root cause, and proposing minimal targeted fixes.',
+};
+
+type ChatMode = 'ask' | 'agent' | 'plan' | 'debug' | 'multitask';
+
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | null = null;
+  private webviews = new Set<vscode.Webview>();
+  private initialized = false;
   private client: DaemonClient | null = null;
   private rag: RagService | null = null;
   private docs: DocsService | null = null;
@@ -41,6 +53,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private store: SessionStore;
   private generating: AbortController | null = null;
   private agentMode = false;
+  private chatMode: ChatMode = 'ask';
   private selected: PolicyEntry | null = null;
   private devMode = false;
   private devModel: string | null = null;
@@ -48,30 +61,122 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private poller: ReturnType<typeof setInterval> | null = null;
   private watcherStarted = false;
   private ragIndexing = false;
+  private lastCheckpoint: AgentCheckpoint | null = null;
   private prefs: Prefs;
+  private testPosts: unknown[] = [];
+  private mediaWatcherStarted = false;
+  private mediaReloadDebouncer: Debouncer | null = null;
 
   constructor(private context: vscode.ExtensionContext, private connect: () => Promise<DaemonClient>) {
     this.store = SessionStore.load(context.workspaceState);
     this.devMode = context.globalState.get<boolean>('fortressCode.devMode', false);
     this.prefs = new Prefs(this.context.globalState);
+    this.startMediaWatcher();
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
     const media = vscode.Uri.joinPath(this.context.extensionUri, 'media');
     view.webview.options = { enableScripts: true, localResourceRoots: [media] };
-    let html = readFileSync(join(this.context.extensionPath, 'media', 'chat.html'), 'utf8');
-    html = html.replace(/\{cspSource\}/g, view.webview.cspSource);
-    const bust = `?v=${Date.now()}`; // cache-bust so the webview never serves a stale chat.css/chat.js
-    for (const f of ['chat.css', 'chat.js', 'vendor/katex.min.css', 'vendor/katex.min.js', 'vendor/auto-render.min.js', 'vendor/mermaid.min.js']) {
-      html = html.replace(f, view.webview.asWebviewUri(vscode.Uri.joinPath(media, f)).toString() + bust);
-    }
-    view.webview.html = html;
-    view.webview.onDidReceiveMessage((m) => this.onMessage(m));
-    void this.init();
+    view.webview.html = this.buildHtml(view.webview);
+    this.attachWebview(view.webview);
+    view.onDidDispose(() => this.detachWebview(view.webview));
+    void this.ensureReady();
   }
 
-  private post(msg: unknown): void { void this.view?.webview.postMessage(msg); }
+  /** Snapshot of webview wiring for E2E tests (FORTRESS_CODE_TEST=1). */
+  getTestState(): Record<string, unknown> {
+    const types = this.testPosts.map((m) => (m as { type?: string }).type).filter(Boolean) as string[];
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    return {
+      webviewCount: this.webviews.size,
+      initialized: this.initialized,
+      postedTypes: [...new Set(types)],
+      hasPolicy: types.includes('policy'),
+      hasError: types.includes('error'),
+      hasProjectRules: types.includes('projectRules'),
+      chatMode: this.chatMode,
+      projectRulesPath: loadProjectRules(root).path ?? defaultRulesRel(root),
+    };
+  }
+
+  /** Reload chat HTML/CSS/JS in all open webviews (dev hot reload). */
+  async reloadWebviews(): Promise<void> {
+    for (const wv of [...this.webviews]) {
+      wv.html = this.buildHtml(wv);
+      await this.syncWebview(wv);
+    }
+  }
+
+  /** Open the chat UI in an editor tab (alongside the sidebar panel). */
+  async openInEditor(): Promise<void> {
+    const media = vscode.Uri.joinPath(this.context.extensionUri, 'media');
+    const panel = vscode.window.createWebviewPanel(
+      'fortressCode.chatPanel',
+      'Fortress Code',
+      vscode.ViewColumn.Beside,
+      { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [media] },
+    );
+    panel.webview.html = this.buildHtml(panel.webview);
+    this.attachWebview(panel.webview);
+    panel.onDidDispose(() => this.detachWebview(panel.webview));
+    this.context.subscriptions.push(panel);
+    await this.ensureReady();
+    await this.syncWebview(panel.webview);
+  }
+
+  private buildHtml(webview: vscode.Webview): string {
+    const media = vscode.Uri.joinPath(this.context.extensionUri, 'media');
+    let html = readFileSync(join(this.context.extensionPath, 'media', 'chat.html'), 'utf8');
+    html = html.replace(/\{cspSource\}/g, webview.cspSource);
+    const bust = `?v=${Date.now()}`;
+    for (const f of ['chat.css', 'chat.js', 'vendor/katex.min.css', 'vendor/katex.min.js', 'vendor/auto-render.min.js', 'vendor/mermaid.min.js']) {
+      html = html.replace(f, webview.asWebviewUri(vscode.Uri.joinPath(media, f)).toString() + bust);
+    }
+    return html;
+  }
+
+  /** Watch media/ in dev and hot-reload webviews when HTML/CSS/JS change. */
+  private startMediaWatcher(): void {
+    if (this.mediaWatcherStarted) return;
+    if (this.context.extensionMode !== vscode.ExtensionMode.Development) return;
+    this.mediaWatcherStarted = true;
+    const pattern = new vscode.RelativePattern(this.context.extensionUri, 'media/**');
+    const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+    this.mediaReloadDebouncer = new Debouncer(300, () => void this.reloadWebviews());
+    watcher.onDidChange((uri) => this.mediaReloadDebouncer!.add(uri.fsPath));
+    watcher.onDidCreate((uri) => this.mediaReloadDebouncer!.add(uri.fsPath));
+    this.context.subscriptions.push(watcher);
+  }
+
+  private trackPost(msg: unknown): void {
+    if (process.env.FORTRESS_CODE_TEST === '1') this.testPosts.push(msg);
+  }
+
+  private deliver(msg: unknown, target?: vscode.Webview): void {
+    this.trackPost(msg);
+    if (target) void target.postMessage(msg);
+    else for (const wv of this.webviews) void wv.postMessage(msg);
+  }
+
+  private attachWebview(webview: vscode.Webview): void {
+    this.webviews.add(webview);
+    webview.onDidReceiveMessage((m) => this.onMessage(m));
+  }
+
+  private detachWebview(webview: vscode.Webview): void {
+    this.webviews.delete(webview);
+  }
+
+  private async ensureReady(): Promise<void> {
+    if (this.initialized) return;
+    this.initialized = true;
+    await this.init();
+  }
+
+  private post(msg: unknown): void {
+    this.deliver(msg);
+  }
   private banner(message: string): void { this.post({ type: 'error', message: (message && message.trim()) ? message : 'Fortress Code error (no details)' }); }
 
   private async ensureClient(): Promise<DaemonClient> {
@@ -107,16 +212,42 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     return new MemoryStore(this.memoryPath()).load();
   }
 
-  /** Build system prompt from persona, memory, and defaults. */
+  /** Build system prompt from persona, memory, project rules, and defaults. */
   private systemPromptForChat(): string {
     const meta = this.store.metas().find((m) => m.id === this.store.activeId);
     const persona = meta?.personaId ? this.prefs.personas().find((p) => p.id === meta.personaId) : undefined;
     const mem = MemoryStore.preamble(this.memoryData());
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const rules = loadProjectRules(root).text;
     const base = persona?.systemPrompt?.trim() || SYSTEM_PROMPT;
-    return mem ? `${base}\n\n${mem}` : base;
+    const modeHint = MODE_PROMPTS[this.chatMode] ?? '';
+    const parts = [base, mem, rules, modeHint].filter(Boolean);
+    return parts.join('\n\n');
   }
 
-  private toolExtras() {
+  private postMcpStatus(): void {
+    this.postMcpStatusTarget();
+  }
+
+  private postMcpStatusTarget(emit?: (msg: unknown) => void): void {
+    const msg = {
+      type: 'mcpStatus',
+      servers: this.mcpClients.map((c) => ({
+        name: c.serverName(),
+        connected: c.isConnected(),
+        tools: c.toolCount(),
+      })),
+    };
+    if (emit) emit(msg);
+    else this.post(msg);
+  }
+
+  private postChatMode(): void {
+    const agentCapable = this.devMode && this.devModel ? true : !!this.selected?.agentCapable;
+    this.post({ type: 'chatMode', mode: this.chatMode, agentOn: this.agentMode, compareId: this.compareModelId, agentCapable });
+  }
+
+  private toolExtras(checkpoint?: AgentCheckpoint) {
     const memPath = this.memoryPath();
     return {
       webSearch: (q: string) => webSearch(q),
@@ -135,7 +266,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         return 'mcp tool not found';
       },
+      onFileTouch: checkpoint ? (rel: string, abs: string) => checkpoint.capture(rel, abs) : undefined,
+      onFileRevertCapture: checkpoint ? (rel: string) => checkpoint.revert(rel) : undefined,
     };
+  }
+
+  private postAgentUndo(): void {
+    this.post({ type: 'agentUndo', available: !!(this.lastCheckpoint && this.lastCheckpoint.hasChanges()) });
   }
 
   private async initMcp(): Promise<void> {
@@ -146,33 +283,89 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     for (const client of this.mcpClients) {
       try { this.mcpTools.push(...client.openAiSchemas()); await client.connect(); } catch { /* skip broken server */ }
     }
+    this.postMcpStatus();
   }
 
   private async init(): Promise<void> {
     try {
       this.client = await this.connect();
-      this.post({ type: 'policy', local: localEntries(), openrouter: loadPolicy().filter((e) => e.provider === 'openrouter') });
-      this.post({ type: 'prefs', prompts: this.prefs.prompts(), params: this.prefs.params() });
-      this.post({ type: 'memory', data: this.memoryData() });
-      this.post({ type: 'folders', folders: this.store.listFolders() });
-      this.post({ type: 'docsStatus', stats: this.docsService().stats() });
-      await this.initMcp();
-      this.post({ type: 'openRouterKeySet', set: !!(await getOpenRouterKey(this.context.secrets)) });
-      await this.postDev();
-      this.post({ type: 'history', messages: this.store.active().messages });
-      this.postChats();
       this.poller = setInterval(() => void this.pushStatus(), 2000);
       this.context.subscriptions.push({ dispose: () => this.poller && clearInterval(this.poller) });
-      await this.pushStatus();
       const refresh = () => void this.postChips();
       this.context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(refresh),
         vscode.window.onDidChangeTextEditorSelection(refresh),
       );
+      await this.initMcp();
+      await this.pushFullState();
       await this.postChips();
     } catch (e) {
+      this.initialized = false;
       this.banner(`Could not start the Fortress Code daemon: ${e}`);
     }
+  }
+
+  /** Push current UI state to one webview or all connected webviews. */
+  private async pushFullState(target?: vscode.Webview): Promise<void> {
+    const emit = (msg: unknown) => this.deliver(msg, target);
+    emit({ type: 'policy', local: localEntries(), openrouter: loadPolicy().filter((e) => e.provider === 'openrouter') });
+    emit({ type: 'prefs', prompts: this.prefs.prompts(), params: this.prefs.params() });
+    emit({ type: 'personas', personas: this.prefs.personas() });
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    emit({ type: 'projectRules', path: loadProjectRules(root).path ?? defaultRulesRel(root) });
+    emit({ type: 'memory', data: this.memoryData() });
+    emit({ type: 'folders', folders: this.store.listFolders() });
+    emit({ type: 'docsStatus', stats: this.docsService().stats() });
+    this.postMcpStatusTarget(emit);
+    emit({ type: 'openRouterKeySet', set: !!(await getOpenRouterKey(this.context.secrets)) });
+    await this.postDevTarget(emit);
+    emit({ type: 'history', messages: this.store.active().messages });
+    this.postChatsTarget(emit);
+    await this.pushStatusTarget(emit);
+    this.postAgentUndoTarget(emit);
+    this.postChatModeTarget(emit);
+  }
+
+  private async syncWebview(webview: vscode.Webview): Promise<void> {
+    await this.pushFullState(webview);
+    await this.postChipsTarget(webview);
+  }
+
+  private postChatsTarget(emit: (msg: unknown) => void): void {
+    emit({ type: 'chats', metas: this.store.metas(), activeId: this.store.activeId });
+  }
+
+  private postAgentUndoTarget(emit: (msg: unknown) => void): void {
+    emit({ type: 'agentUndo', available: !!(this.lastCheckpoint && this.lastCheckpoint.hasChanges()) });
+  }
+
+  private postChatModeTarget(emit: (msg: unknown) => void): void {
+    const agentCapable = this.devMode && this.devModel ? true : !!this.selected?.agentCapable;
+    emit({ type: 'chatMode', mode: this.chatMode, agentOn: this.agentMode, compareId: this.compareModelId, agentCapable });
+  }
+
+  private async postDevTarget(emit: (msg: unknown) => void): Promise<void> {
+    emit({ type: 'devMode', on: this.devMode, presets: DEV_PRESETS, fireworksKeySet: !!(await getFireworksKey(this.context.secrets)) });
+  }
+
+  private async pushStatusTarget(emit: (msg: unknown) => void): Promise<void> {
+    if (!this.client) return;
+    try {
+      const status: StatusResponse = await this.client.status();
+      emit({ type: 'state', status, selectedId: this.selected?.id ?? null });
+      const rag = this.ragService();
+      if (rag) emit({ type: 'ragStatus', stats: rag.stats(), indexing: this.ragIndexing });
+    } catch {
+      this.client = null;
+    }
+  }
+
+  private async postChipsTarget(webview: vscode.Webview): Promise<void> {
+    const ctx = await this.collectContext('');
+    const chips: { id: string; label: string; kind: string }[] = [];
+    if (ctx.file) chips.push({ id: ctx.file.id, label: '📄 ' + ctx.file.relPath, kind: 'file' });
+    if (ctx.selection) chips.push({ id: ctx.selection.id, label: `✂ ${ctx.selection.relPath} L${ctx.selection.startLine}-${ctx.selection.endLine}`, kind: 'sel' });
+    void webview.postMessage({ type: 'context', chips });
   }
 
   setDevMode(on: boolean): void {
@@ -300,6 +493,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async onMessage(m: any): Promise<void> {
     try {
       switch (m.type) {
+        case 'openChatInEditor': return await this.openInEditor();
         case 'send': return await this.handleSend(String(m.text));
         case 'cancel': this.generating?.abort(); return;
         case 'newChat': this.generating?.abort(); this.store.newChat(); this.post({ type: 'history', messages: [] }); this.postChats(); return;
@@ -311,7 +505,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           if (um && um.role === 'user') { msgs.length = Number(m.index); this.store.save(); this.post({ type: 'history', messages: msgs }); this.post({ type: 'restoreInput', text: um.content }); }
           return;
         }
-        case 'agentToggle': this.agentMode = !!m.on; return;
+        case 'agentToggle': this.agentMode = !!m.on; this.chatMode = this.agentMode ? 'agent' : 'ask'; this.postChatMode(); return;
+        case 'setChatMode': {
+          const mode = String(m.mode) as ChatMode;
+          if (!['ask', 'agent', 'plan', 'debug', 'multitask'].includes(mode)) return;
+          const agentCapable = this.devMode && this.devModel ? true : !!this.selected?.agentCapable;
+          if ((mode === 'plan' || mode === 'debug' || mode === 'agent') && !agentCapable) {
+            this.banner('This model does not support agent modes. Pick an agent-capable model.');
+            return;
+          }
+          this.chatMode = mode;
+          this.agentMode = mode === 'agent' || mode === 'plan' || mode === 'debug';
+          if (mode === 'multitask' && !this.compareModelId) this.post({ type: 'openActionSub', sub: 'multitask' });
+          this.postChatMode();
+          return;
+        }
+        case 'openMcpSettings':
+          await vscode.commands.executeCommand('workbench.action.openSettings', 'fortressCode.mcpServers');
+          return;
         case 'selectModel': return await this.selectModel(String(m.id));
         case 'addModel': return this.handleAddModel(String(m.slug));
         case 'setOpenRouterKey': await setOpenRouterKey(this.context.secrets, String(m.key)); this.post({ type: 'openRouterKeySet', set: true }); return;
@@ -406,7 +617,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           const last = [...msgs].reverse().find((x) => x.role === 'assistant');
           if (last) void speakText(last.content).catch((e) => this.banner(String(e))); return;
         }
-        case 'setCompareModel': this.compareModelId = m.id ? String(m.id) : null; this.post({ type: 'compareModel', id: this.compareModelId }); return;
+        case 'setCompareModel': this.compareModelId = m.id ? String(m.id) : null; if (this.compareModelId) this.chatMode = 'multitask'; this.postChatMode(); return;
         case 'showArtifact': this.post({ type: 'artifact', html: String(m.html ?? '') }); return;
         case 'exportChat': {
           const title = this.store.metas().find((x) => x.id === this.store.activeId)?.title ?? 'Chat';
@@ -415,6 +626,35 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           if (uri) await vscode.workspace.fs.writeFile(uri, Buffer.from(md, 'utf8'));
           return;
         }
+        case 'listMentionFiles': {
+          const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          this.post({ type: 'mentionFiles', items: mentionCandidates(root, String(m.query ?? '')) });
+          return;
+        }
+        case 'undoAgentRun': {
+          const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          if (!root || !this.lastCheckpoint?.hasChanges()) { this.banner('Nothing to undo from the last agent run.'); return; }
+          const restored = this.lastCheckpoint.restore(root);
+          this.lastCheckpoint = null;
+          this.postAgentUndo();
+          vscode.window.showInformationMessage(restored.length ? `Restored ${restored.length} file(s) from before the last agent run.` : 'Agent run undone.');
+          return;
+        }
+        case 'openRulesFile': {
+          const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          if (!root) { this.banner('Open a folder to edit project rules.'); return; }
+          const rel = defaultRulesRel(root);
+          const abs = join(root, rel);
+          try { readFileSync(abs); } catch {
+            await vscode.workspace.fs.writeFile(vscode.Uri.file(abs), Buffer.from('# Project rules\n\nAdd instructions Fortress Code should follow in this repo.\n', 'utf8'));
+          }
+          const doc = await vscode.workspace.openTextDocument(abs);
+          await vscode.window.showTextDocument(doc);
+          return;
+        }
+        case 'savePersona': this.prefs.savePersona(m.persona); this.post({ type: 'personas', personas: this.prefs.personas() }); return;
+        case 'deletePersona': this.prefs.deletePersona(String(m.id)); this.post({ type: 'personas', personas: this.prefs.personas() }); return;
+        case 'setPersona': this.store.setPersona(this.store.activeId, m.id ? String(m.id) : undefined); this.postChats(); return;
       }
     } catch (e) {
       this.banner(String(e));
@@ -508,6 +748,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.post({ type: 'history', messages: session.messages });
     this.generating = new AbortController();
     let usage: Usage | null = null;
+    const checkpoint = this.agentMode ? new AgentCheckpoint() : null;
     try {
       if (this.compareModelId) {
         const entry = loadPolicy().find((e) => e.id === this.compareModelId);
@@ -518,7 +759,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.post({ type: 'compareStart' });
           await Promise.all([
             (async () => {
-              if (this.agentMode) await runAgentTurn(target, session, sys, (step) => this.post({ type: 'agentStep', step: `[A] ${step}` }), this.generating!.signal, { extraTools: this.mcpTools, toolExtras: this.toolExtras() });
+              if (this.agentMode) await runAgentTurn(target, session, sys, (step) => this.post({ type: 'agentStep', step: `[A] ${step}` }), this.generating!.signal, { extraTools: this.mcpTools, toolExtras: this.toolExtras(checkpoint ?? undefined) });
               else {
                 const r = await streamChat(target, session.toRequestMessages(sys), (t) => this.post({ type: 'token', text: t }), this.generating!.signal, (t) => this.post({ type: 'reasoning', text: t }));
                 session.addAssistant(splitThink(r.content).content || '(no reply)');
@@ -533,7 +774,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.post({ type: 'compareDone', side: 'A', content: session.messages[session.messages.length - 1]?.content ?? '' });
         }
       } else if (this.agentMode) {
-        await runAgentTurn(target, session, sys, (step) => this.post({ type: 'agentStep', step }), this.generating.signal, { extraTools: this.mcpTools, toolExtras: this.toolExtras() });
+        await runAgentTurn(target, session, sys, (step) => this.post({ type: 'agentStep', step }), this.generating.signal, { extraTools: this.mcpTools, toolExtras: this.toolExtras(checkpoint ?? undefined) });
       } else {
         const r = await streamChat(target, session.toRequestMessages(sys),
           (t) => this.post({ type: 'token', text: t }), this.generating.signal,
@@ -551,6 +792,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.post({ type: 'history', messages: session.messages });
       this.postChats();
       if (usage) this.post({ type: 'usage', usage });
+      if (checkpoint?.hasChanges()) {
+        this.lastCheckpoint = checkpoint;
+        this.postAgentUndo();
+      }
     } catch (e) {
       session.messages.length = preTurnLen; // error hygiene: remove user msg + any tool exchange from the failed turn
       this.store.save();

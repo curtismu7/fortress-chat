@@ -5,96 +5,171 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {cspSource} 'unsafe-inline'; script-src {cspSource}; font-src {cspSource};" />
   <link rel="stylesheet" href="chat.css" />
 </head>
-<body>
-  <div id="banner" hidden><span id="banner-text"></span><button id="banner-close">×</button></div>
-
-  <section id="gallery">
-    <div id="setup" hidden></div>
-    <div id="gallery-toggle">▾ Models</div>
-    <div id="gallery-body">
-      <div class="seg"><button id="seg-local" class="on">Local</button><button id="seg-or">OpenRouter</button></div>
-      <div id="req-local" class="callout">🖥 Runs on this Mac — nothing leaves your machine. Needs RAM + a one-time download.</div>
-      <div id="req-or" class="warn" hidden>☁️ Cloud — leaves your machine. Prompts &amp; code go to OpenRouter and pinned <b>US inference providers only, no fallback</b>. Less private than Local.</div>
-      <div id="or-key" hidden><input id="or-key-input" type="password" placeholder="OpenRouter API key (stored in your OS keychain)" /><button id="or-key-save">Save</button></div>
-      <div id="models"></div>
-      <div id="rag">
-        <div id="rag-row">
-          <button id="rag-index">Index workspace</button>
-          <span id="rag-status">Not indexed</span>
-        </div>
-        <div id="rag-bar" class="dlbar" hidden><span id="rag-fill"></span></div>
-        <div id="rag-hint">Type <b>@codebase</b> to search the repo.</div>
-      </div>
-      <div id="docs-row">
-        <button id="docs-index">Add documents</button>
-        <span id="docs-status">No docs indexed</span>
-        <div id="docs-hint">Type <b>@docs</b> to search indexed documents.</div>
-      </div>
-      <div id="add-row"><input id="add-slug" placeholder="Add an OpenRouter model (e.g. openai/gpt-4o)" /><button id="add-btn">＋ Add</button></div>
-      <div id="add-blocked" hidden></div>
-    </div>
-  </section>
-
-  <section id="dev" hidden>
-    <div class="devbanner">⚠ Developer mode — US-only governance is BYPASSED</div>
-    <div id="fw-key-row"><input id="fw-key" type="password" placeholder="Fireworks API key (stored in your OS keychain)" /><button id="fw-key-save">Save</button></div>
-    <div class="devrow">
-      <select id="dev-preset"></select>
-      <input id="dev-slug" placeholder="or paste accounts/fireworks/models/…" />
-      <button id="dev-use">Use</button>
-    </div>
-  </section>
-
-  <header id="chat-head" hidden>
-    <input id="chat-search" placeholder="Search chats" />
-    <select id="folder-filter" title="Folder"><option value="">All folders</option></select>
-    <select id="chat-picker" title="Chats"></select>
-    <select id="compare-picker" title="Compare with"><option value="">No compare</option></select>
-    <span id="active-model"></span>
-    <label><input type="checkbox" id="agent-toggle" /> Agent</label>
-    <button id="new-chat">New chat</button>
-    <button id="export-chat" title="Export chat as Markdown">Export</button>
-    <button id="memory-btn" title="Memory">Memory</button>
-    <button id="attach-img" title="Attach image">📷</button>
-    <button id="speak-btn" title="Read last reply aloud">🔊</button>
-    <button id="params-btn" title="Model parameters">⚙</button>
-    <button id="prompts-btn" title="Prompt library">Prompts</button>
+<body class="claude-ui">
+  <header id="top-bar">
+    <button type="button" id="model-picker-btn" class="model-picker-trigger">
+      <span id="active-model">Choose a model</span>
+      <span class="model-chevron">▾</span>
+    </button>
+    <button type="button" id="settings-btn" class="icon-btn" title="Settings">⚙</button>
   </header>
-  <div id="params-pop" hidden>
-    <label>Temperature <input id="p-temp" type="number" step="0.1" min="0" max="2" placeholder="model default" /></label>
-    <label>Top P <input id="p-topp" type="number" step="0.05" min="0" max="1" placeholder="model default" /></label>
-    <label>Max tokens <input id="p-maxtok" type="number" step="1" min="1" placeholder="model default" /></label>
-    <button id="params-apply">Apply</button>
-  </div>
-  <div id="prompts-mgr" hidden>
-    <div id="prompts-list"></div>
-    <textarea id="pr-text" placeholder="Prompt text (use {var} for a placeholder)"></textarea>
-    <div class="pr-actions">
-      <button id="pr-save">Save</button>
-      <button id="prompts-close">Close</button>
-    </div>
-  </div>
-  <div id="memory-mgr" hidden>
-    <label><input type="checkbox" id="mem-enabled" /> Enable memory in prompts</label>
-    <textarea id="mem-facts" placeholder="One fact per line"></textarea>
-    <button id="mem-save">Save memory</button>
-    <button id="memory-close">Close</button>
-  </div>
+
+  <div id="compare-pane" hidden><div id="compare-a"></div><div id="compare-b"></div></div>
   <div id="artifact-pane" hidden>
     <div class="artifact-head"><span>Artifact preview</span><button id="artifact-close">×</button></div>
     <iframe id="artifact-frame" sandbox="allow-scripts" title="Artifact"></iframe>
   </div>
-  <div id="compare-pane" hidden><div id="compare-a"></div><div id="compare-b"></div></div>
-  <main id="messages"></main>
+
+  <main id="messages-wrap">
+    <div id="empty-state" class="empty-state">
+      <p>Select a model to start chatting.</p>
+      <button type="button" id="empty-pick-model">Choose model</button>
+    </div>
+    <main id="messages"></main>
+  </main>
   <div id="steps" hidden></div>
-  <div id="slash-menu" hidden></div>
+
   <footer id="composer" hidden>
+    <div id="banner" hidden><span id="banner-text"></span><button type="button" id="banner-close">×</button></div>
     <div id="chips"></div>
-    <textarea id="input" rows="2" placeholder="Ask your model…"></textarea>
-    <span id="meter" title="estimated request size vs the model's context window"></span>
-    <button id="send">Send</button>
-    <button id="cancel" hidden>Stop</button>
+    <div class="composer-box">
+      <div class="composer-input-row">
+        <button type="button" id="action-btn" class="action-plus" title="Add context, tools, and modes">+</button>
+        <textarea id="input" rows="1" placeholder="Reply to Fortress Code…"></textarea>
+      </div>
+      <div class="composer-actions">
+        <span id="mode-badge" class="mode-badge" hidden></span>
+        <button type="button" id="cancel" class="icon-btn" hidden title="Stop">■</button>
+        <button type="button" id="send" class="send-btn" title="Send">↑</button>
+      </div>
+    </div>
+    <div id="action-menu" hidden>
+      <input id="action-search" type="text" placeholder="Add agents, context, tools…" autocomplete="off" />
+      <div id="action-body"></div>
+    </div>
+    <div id="slash-menu" hidden></div>
+    <div id="mention-menu" hidden></div>
   </footer>
+
+  <div id="model-picker" hidden>
+    <div id="model-picker-scrim"></div>
+    <div class="model-picker-panel">
+      <div class="model-picker-head">
+        <span class="model-picker-title">Models</span>
+        <button type="button" id="model-picker-close" class="icon-btn">×</button>
+      </div>
+      <div id="setup" hidden></div>
+      <div id="models" class="model-list"></div>
+    </div>
+  </div>
+
+  <aside id="settings-panel" hidden>
+    <div class="settings-head">
+      <h2>Settings</h2>
+      <button type="button" id="settings-close" class="icon-btn">×</button>
+    </div>
+    <div class="settings-body">
+      <details class="settings-section" open>
+        <summary>Chat</summary>
+        <button type="button" id="new-chat" class="settings-block-btn">New chat</button>
+        <button type="button" id="open-editor-chat" class="settings-block-btn">Open chat in editor tab</button>
+        <label class="settings-row"><input type="checkbox" id="agent-toggle" /> Agent mode</label>
+        <label class="settings-row">Compare model
+          <select id="compare-picker"><option value="">None</option></select>
+        </label>
+        <label class="settings-row">Folder
+          <select id="folder-filter"><option value="">All folders</option></select>
+        </label>
+        <label class="settings-row">Search chats
+          <input id="chat-search" placeholder="Filter…" />
+        </label>
+        <label class="settings-row">Active chat
+          <select id="chat-picker"></select>
+        </label>
+        <label class="settings-row">Persona
+          <select id="persona-picker"><option value="">Default</option></select>
+        </label>
+      </details>
+
+      <details class="settings-section">
+        <summary>Project</summary>
+        <p id="rules-path" class="settings-hint">No rules file</p>
+        <button type="button" id="rules-open">Edit project rules</button>
+        <div class="settings-row-inline">
+          <button type="button" id="rag-index">Index workspace</button>
+          <span id="rag-status">Not indexed</span>
+        </div>
+        <div id="rag-bar" class="dlbar" hidden><span id="rag-fill"></span></div>
+        <div class="settings-row-inline">
+          <button type="button" id="docs-index">Add documents</button>
+          <span id="docs-status">No docs</span>
+        </div>
+        <p class="settings-hint">Type <b>@</b> for files, <b>@codebase</b>, or <b>@docs</b>.</p>
+      </details>
+
+      <details class="settings-section">
+        <summary>Memory</summary>
+        <label class="settings-row"><input type="checkbox" id="mem-enabled" /> Include in prompts</label>
+        <textarea id="mem-facts" placeholder="One fact per line"></textarea>
+        <button type="button" id="mem-save">Save memory</button>
+      </details>
+
+      <details class="settings-section">
+        <summary>Prompt library</summary>
+        <div id="prompts-list"></div>
+        <textarea id="pr-text" placeholder="Prompt text (use {var} for placeholders)"></textarea>
+        <div class="pr-actions">
+          <button type="button" id="pr-save">Save prompt</button>
+        </div>
+      </details>
+
+      <details class="settings-section">
+        <summary>Model parameters</summary>
+        <p id="meter" class="settings-hint">Context usage appears while typing.</p>
+        <label class="settings-row">Temperature <input id="p-temp" type="number" step="0.1" min="0" max="2" placeholder="default" /></label>
+        <label class="settings-row">Top P <input id="p-topp" type="number" step="0.05" min="0" max="1" placeholder="default" /></label>
+        <label class="settings-row">Max tokens <input id="p-maxtok" type="number" step="1" min="1" placeholder="default" /></label>
+        <button type="button" id="params-apply">Apply parameters</button>
+      </details>
+
+      <details class="settings-section">
+        <summary>Personas</summary>
+        <div id="personas-list"></div>
+        <input id="persona-name" placeholder="Persona name" />
+        <textarea id="persona-prompt" placeholder="System prompt for this persona"></textarea>
+        <button type="button" id="persona-save">Save persona</button>
+      </details>
+
+      <details class="settings-section">
+        <summary>Cloud models</summary>
+        <div id="or-key"><input id="or-key-input" type="password" placeholder="OpenRouter API key" /><button id="or-key-save">Save</button></div>
+        <div id="add-row"><input id="add-slug" placeholder="Add OpenRouter model slug" /><button id="add-btn">Add</button></div>
+        <div id="add-blocked" hidden></div>
+        <p class="settings-hint">Cloud models appear in the model picker after you save a key.</p>
+      </details>
+
+      <details class="settings-section">
+        <summary>More</summary>
+        <button type="button" id="export-chat">Export chat</button>
+        <button type="button" id="attach-img">Attach image</button>
+        <button type="button" id="speak-btn">Read last reply aloud</button>
+        <button type="button" id="undo-agent" disabled>Undo last agent edits</button>
+      </details>
+
+      <details class="settings-section" id="dev-settings" hidden>
+        <summary>Developer</summary>
+        <div class="devbanner">Developer mode — governance bypassed</div>
+        <div id="fw-key-row"><input id="fw-key" type="password" placeholder="Fireworks API key" /><button id="fw-key-save">Save</button></div>
+        <div class="devrow">
+          <select id="dev-preset"></select>
+          <input id="dev-slug" placeholder="Fireworks model slug" />
+          <button id="dev-use">Use</button>
+        </div>
+      </details>
+    </div>
+  </aside>
+  <div id="settings-scrim" hidden></div>
+
   <link rel="stylesheet" href="vendor/katex.min.css" />
   <script src="vendor/katex.min.js"></script>
   <script src="vendor/auto-render.min.js"></script>

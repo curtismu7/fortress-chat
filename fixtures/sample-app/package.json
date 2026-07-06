@@ -1,0 +1,8 @@
+{
+  "name": "fortress-fixture-sample-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test src/greeter.test.js"
+  }
+}

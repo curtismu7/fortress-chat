@@ -24,6 +24,8 @@ export interface ToolExtras {
   remember?: (fact: string) => string;
   webSearch?: (query: string) => Promise<string>;
   mcpCall?: (name: string, args: Record<string, unknown>) => Promise<string>;
+  onFileTouch?: (rel: string, abs: string) => void;
+  onFileRevertCapture?: (rel: string) => void;
 }
 
 export function resolveInWorkspace(root: string, relPath: string): string {
@@ -109,13 +111,19 @@ export async function executeTool(name: string, args: any, workspaceRoot: string
     case 'edit_file': {
       const rel = String(args.path);
       const abs = resolveInWorkspace(workspaceRoot, rel);
-      return editFileWithApproval(abs, String(args.content), rel);
+      extras?.onFileTouch?.(rel, abs);
+      const result = await editFileWithApproval(abs, String(args.content), rel);
+      if (result !== 'applied') extras?.onFileRevertCapture?.(rel);
+      return result;
     }
     case 'create_file': {
       const rel = String(args.path);
       const abs = resolveInWorkspace(workspaceRoot, rel);
       if (existsSync(abs)) return `error: ${rel} already exists — use edit_file to modify it`;
-      return editFileWithApproval(abs, String(args.content), rel);
+      extras?.onFileTouch?.(rel, abs);
+      const result = await editFileWithApproval(abs, String(args.content), rel);
+      if (result !== 'applied') extras?.onFileRevertCapture?.(rel);
+      return result;
     }
     case 'run_command': {
       const command = String(args.command);

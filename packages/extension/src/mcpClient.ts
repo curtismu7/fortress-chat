@@ -51,6 +51,10 @@ export class McpClient {
     }));
   }
 
+  serverName(): string { return this.cfg.name; }
+  isConnected(): boolean { return !!this.proc; }
+  toolCount(): number { return this.tools.length; }
+
   dispose(): void {
     this.proc?.kill();
     this.proc = null;
