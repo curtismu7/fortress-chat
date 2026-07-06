@@ -142,5 +142,24 @@
     "extraArgs": [],
     "embedding": true,
     "dims": 768
+  },
+  {
+    "id": "qwythos-9b-q4",
+    "family": "qwythos",
+    "displayName": "Qwythos 9B",
+    "hfRepo": "empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF",
+    "hidden": true,
+    "files": [
+      {
+        "name": "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M.gguf",
+        "sha256": "88c75f5a2684d07ac4b08e47f06cf6f65045072b1aeb29b33cf50cdae2d8cea1",
+        "bytes": 5629109152
+      }
+    ],
+    "memoryBytes": 12884901888,
+    "ramTierBytes": 17179869184,
+    "toolCalling": true,
+    "license": "Apache-2.0",
+    "extraArgs": []
   }
 ]

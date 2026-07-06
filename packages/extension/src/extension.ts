@@ -16,17 +16,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('fortress-chat.reloadMcp', () => provider.reloadMcpServers()),
     vscode.commands.registerCommand('fortress-chat.reloadSkills', () => provider.reloadSkillsList()),
     vscode.commands.registerCommand('fortress-chat.toggleDevMode', async () => {
-      const on = !context.globalState.get<boolean>('fortressChat.devMode', false);
-      if (on) {
-        const ok = await vscode.window.showWarningMessage(
-          'Developer Mode bypasses the US-only governance and lets you use any Fireworks model (including non-US). Continue?',
-          { modal: true }, 'Enable',
-        );
-        if (ok !== 'Enable') return;
-      }
-      await context.globalState.update('fortressChat.devMode', on);
-      provider.setDevMode(on);
-      void vscode.window.showInformationMessage(`FortressChat Developer Mode ${on ? 'ON — governance BYPASSED' : 'off'}`);
+      void vscode.window.showErrorMessage(
+        'Developer mode is disabled. FortressChat supports local US models only.',
+        { modal: true },
+      );
     }),
     ...['explain', 'fix', 'test', 'refactor', 'doc'].map((k) =>
       vscode.commands.registerCommand(`fortress-chat.${k}Selection`, async () => {

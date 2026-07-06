@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { loadPolicy, localEntries, explainBlock, type PolicyEntry, type StatusResponse } from '@fortress-chat/shared';
+import { loadPolicy, visibleLocalEntries, hiddenLocalEntries, explainBlock, formatPolicyFatal, type PolicyEntry, type StatusResponse } from '@fortress-chat/shared';
 import { DaemonClient } from '../daemon';
 import { RagService } from '../rag/service';
 import { Debouncer } from '../rag/watcher';
@@ -68,17 +68,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private skills: Skill[] = [];
   private testPosts: unknown[] = [];
   private mediaWatcherStarted = false;
+  private policyStopped = false;
   private mediaReloadDebouncer: Debouncer | null = null;
 
   constructor(private context: vscode.ExtensionContext, private connect: () => Promise<DaemonClient>) {
     this.store = SessionStore.load(context.workspaceState);
-    // One-time migration from pre-rename 'fortressCode.devMode' key.
-    if (context.globalState.get<boolean>('fortressChat.devMode', false) === false) {
-      const legacy = context.globalState.get<boolean>('fortressCode.devMode', false);
-      if (legacy) void context.globalState.update('fortressChat.devMode', true);
-      void context.globalState.update('fortressCode.devMode', undefined);
-    }
-    this.devMode = context.globalState.get<boolean>('fortressChat.devMode', false);
+    void context.globalState.update('fortressChat.devMode', false);
+    void context.globalState.update('fortressCode.devMode', undefined);
+    this.devMode = false;
     this.prefs = new Prefs(this.context.globalState);
     this.startMediaWatcher();
   }
@@ -344,6 +341,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private async init(): Promise<void> {
     try {
+      this.sanitizeLocalUsOnly();
       this.client = await this.connect();
       this.poller = setInterval(() => void this.pushStatus(), 2000);
       this.context.subscriptions.push({ dispose: () => this.poller && clearInterval(this.poller) });
@@ -370,7 +368,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   /** Push current UI state to one webview or all connected webviews. */
   private async pushFullState(target?: vscode.Webview): Promise<void> {
     const emit = (msg: unknown) => this.deliver(msg, target);
-    emit({ type: 'policy', local: localEntries(), openrouter: loadPolicy().filter((e) => e.provider === 'openrouter') });
+    emit({ type: 'policy', local: visibleLocalEntries(), hidden: hiddenLocalEntries(), openrouter: [] });
     emit({ type: 'prefs', prompts: this.prefs.prompts(), params: this.prefs.params() });
     emit({ type: 'personas', personas: this.prefs.personas() });
     emit({ type: 'skills', skills: this.skills });
@@ -435,9 +433,33 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   setDevMode(on: boolean): void {
-    this.devMode = on;
-    if (!on) this.devModel = null;
+    if (on) {
+      void this.stopForPolicyViolation('Developer mode and cloud models are not allowed.');
+      return;
+    }
+    this.devMode = false;
+    this.devModel = null;
+    void this.context.globalState.update('fortressChat.devMode', false);
     void this.postDev();
+  }
+
+  /** Stop FortressChat after a local-US-only policy violation. */
+  private stopForPolicyViolation(reason: string, slug?: string): void {
+    if (this.policyStopped) return;
+    this.policyStopped = true;
+    const message = formatPolicyFatal(reason, slug);
+    this.post({ type: 'policyFatal', message });
+    void vscode.window.showErrorMessage(message.replace(/\n\n/g, ' '), { modal: true });
+  }
+
+  /** Clear cloud/dev routing left over from before local-US-only enforcement. */
+  private sanitizeLocalUsOnly(): void {
+    if (this.devMode || this.devModel) {
+      this.devMode = false;
+      this.devModel = null;
+      void this.context.globalState.update('fortressChat.devMode', false);
+    }
+    if (this.selected?.provider !== 'local') this.selected = null;
   }
 
   private async postDev(): Promise<void> {
@@ -598,6 +620,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async onMessage(m: any): Promise<void> {
+    if (this.policyStopped) return;
     try {
       switch (m.type) {
         case 'openChatInEditor': return await this.openInEditor();
@@ -626,6 +649,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.restoreAgentModeFromActiveChat();
           this.post({ type: 'history', messages: this.store.active().messages });
           this.postChatMode(); this.postChats();
+          return;
+        }
+        case 'deleteChat': {
+          const id = String(m.id);
+          this.generating?.abort();
+          this.store.deleteChat(id);
+          this.restoreAgentModeFromActiveChat();
+          this.post({ type: 'history', messages: this.store.active().messages });
+          this.postChatMode(); this.postChats();
+          return;
+        }
+        case 'renameChat': {
+          this.store.renameChat(String(m.id), String(m.title ?? ''));
+          this.postChats();
           return;
         }
         case 'regenerate': return await this.regenerate();
@@ -665,14 +702,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           return;
         case 'selectModel': return await this.selectModel(String(m.id));
         case 'addModel': return this.handleAddModel(String(m.slug));
-        case 'setOpenRouterKey': await setOpenRouterKey(this.context.secrets, String(m.key)); this.post({ type: 'openRouterKeySet', set: true }); return;
-        case 'setFireworksKey': await setFireworksKey(this.context.secrets, String(m.key)); await this.postDev(); return;
+        case 'setOpenRouterKey':
+          return this.stopForPolicyViolation('Cloud models are not allowed.');
+        case 'setFireworksKey':
+          return this.stopForPolicyViolation('Developer mode and cloud models are not allowed.');
         case 'selectDevModel':
-          await this.unloadLocalModel();
-          this.devModel = String(m.slug) || null;
-          this.selected = null;
-          this.postContextWindow();
-          return;
+          return this.stopForPolicyViolation('Developer mode and cloud models are not allowed.', String(m.slug || ''));
         case 'downloadModel': await (await this.ensureClient()).download(String(m.catalogId)); return;
         case 'indexWorkspace': {
           if (this.ragIndexing) return;
@@ -854,8 +889,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private handleAddModel(slug: string): void {
     const reason = explainBlock(slug);
-    if (reason) { this.post({ type: 'addBlocked', slug, reason }); return; }
-    // Approved slug: it is already in the registry; surface it as selectable.
+    if (reason) {
+      this.stopForPolicyViolation(reason, slug);
+      return;
+    }
     this.post({ type: 'addAccepted', slug });
   }
 
@@ -966,7 +1003,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.post({ type: 'compareDone', side: 'A', content: session.messages[session.messages.length - 1]?.content ?? '' });
         }
       } else if (this.agentMode) {
-        await runAgentTurn(target, session, sys, (step) => this.post({ type: 'agentStep', step }), this.generating.signal, { extraTools: this.mcpTools, toolExtras: this.toolExtras(checkpoint ?? undefined) });
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root) {
+          this.banner('Agent mode needs a project folder. Use File → Open Folder (Mac) or open a workspace in VS Code.');
+          throw new Error('agent-needs-folder');
+        }
+        await runAgentTurn(target, session, sys, (step) => this.post({ type: 'agentStep', step }), this.generating.signal, { extraTools: this.mcpTools, toolExtras: this.toolExtras(checkpoint ?? undefined), workspaceRoot: root });
       } else {
         const r = await streamChat(target, session.toRequestMessages(sys),
           (t) => this.post({ type: 'token', text: t }), this.generating.signal,

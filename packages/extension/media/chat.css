@@ -692,8 +692,90 @@ code.inl { background: var(--vscode-textCodeBlock-background, #2a2a2a); padding:
   padding: 1px 5px;
   text-transform: uppercase;
 }
+.chat-item-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  border-radius: 8px;
+}
+.chat-item-wrap.active { background: color-mix(in srgb, var(--fc-accent) 14%, transparent); }
+.chat-item-wrap .chat-item {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+}
+.chat-item-menu {
+  flex: 0 0 28px;
+  border: none;
+  background: transparent;
+  color: var(--fc-muted);
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0;
+}
+.chat-item-wrap:hover .chat-item-menu,
+.chat-item-wrap.active .chat-item-menu { opacity: 1; }
+.chat-item-menu:hover { background: var(--fc-border); color: var(--fc-text); }
+
+.model-hidden-group { margin-top: 8px; }
+.model-hidden-group .model-group-label { cursor: pointer; list-style: none; }
+.model-hidden-list { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+
 .chat-list-empty {
   padding: 12px 10px;
   font-size: 12px;
   color: var(--fc-muted);
+}
+
+#policy-fatal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+  padding: 24px;
+}
+
+#policy-fatal[hidden] { display: none !important; }
+
+.policy-fatal-card {
+  max-width: 480px;
+  padding: 24px 28px;
+  border-radius: var(--fc-radius);
+  background: var(--fc-surface);
+  border: 1px solid var(--fc-border);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.policy-fatal-card h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  color: #e07a7a;
+}
+
+.policy-fatal-card p {
+  margin: 0 0 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.policy-fatal-hint {
+  margin-top: 16px !important;
+  font-size: 13px;
+  color: var(--fc-muted);
+}
+
+body.policy-stopped #sidebar,
+body.policy-stopped #top-bar,
+body.policy-stopped #composer-wrap,
+body.policy-stopped #messages,
+body.policy-stopped #settings-panel {
+  pointer-events: none;
+  opacity: 0.35;
+  filter: grayscale(0.4);
 }

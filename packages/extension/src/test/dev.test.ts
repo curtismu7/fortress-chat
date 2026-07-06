@@ -26,8 +26,7 @@ describe('resolveDevTarget (governance bypass)', () => {
 });
 
 describe('DEV_PRESETS', () => {
-  it('includes GLM-5.2 with the verified slug', () => {
-    expect(DEV_PRESETS.some((p) => p.slug === 'accounts/fireworks/models/glm-5p2')).toBe(true);
-    for (const p of DEV_PRESETS) expect(p.slug).toMatch(/^accounts\/fireworks\/models\/.+/);
+  it('is empty in local-US-only mode (developer mode disabled)', () => {
+    expect(DEV_PRESETS).toEqual([]);
   });
 });
