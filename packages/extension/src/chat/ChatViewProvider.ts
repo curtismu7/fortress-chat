@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { loadPolicy, visibleLocalEntries, hiddenLocalEntries, explainBlock, formatPolicyFatal, type PolicyEntry, type StatusResponse } from '@fortress-chat/shared';
+import { loadPolicy, visibleLocalEntries, hiddenLocalEntries, googleEntries, explainBlock, formatPolicyFatal, type PolicyEntry, type StatusResponse } from '@fortress-chat/shared';
 import { DaemonClient } from '../daemon';
 import { RagService } from '../rag/service';
 import { Debouncer } from '../rag/watcher';
@@ -15,7 +15,7 @@ import { buildInlineEditMessages, stripCodeFences } from '../inlineEdit';
 import { DEV_PRESETS } from '../devPresets';
 import { streamChat, type Usage } from '../providers/stream';
 import { runAgentTurn } from '../agent/loop';
-import { getOpenRouterKey, setOpenRouterKey, getFireworksKey, setFireworksKey } from '../secrets';
+import { getOpenRouterKey, setOpenRouterKey, getFireworksKey, setFireworksKey, getGoogleKey, setGoogleKey } from '../secrets';
 import { buildContextPreamble, parseMentions, capContent, type ChatContext, type AttachedFile } from '../context';
 import { resolveInWorkspace, editFileWithApproval } from '../agent/tools';
 import { Prefs } from '../prefs';
@@ -342,7 +342,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async init(): Promise<void> {
     try {
       this.sanitizeLocalUsOnly();
-      this.client = await this.connect();
+      try {
+        this.client = await this.connect();
+      } catch (e) {
+        if (!(await getGoogleKey(this.context.secrets))) {
+          this.initialized = false;
+          this.banner(`Could not start the FortressChat daemon: ${e}`);
+          return;
+        }
+      }
       this.poller = setInterval(() => void this.pushStatus(), 2000);
       this.context.subscriptions.push({ dispose: () => this.poller && clearInterval(this.poller) });
       const refresh = () => void this.postChips();
@@ -368,7 +376,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   /** Push current UI state to one webview or all connected webviews. */
   private async pushFullState(target?: vscode.Webview): Promise<void> {
     const emit = (msg: unknown) => this.deliver(msg, target);
-    emit({ type: 'policy', local: visibleLocalEntries(), hidden: hiddenLocalEntries(), openrouter: [] });
+    emit({ type: 'policy', local: visibleLocalEntries(), hidden: hiddenLocalEntries(), google: googleEntries(), openrouter: [] });
     emit({ type: 'prefs', prompts: this.prefs.prompts(), params: this.prefs.params() });
     emit({ type: 'personas', personas: this.prefs.personas() });
     emit({ type: 'skills', skills: this.skills });
@@ -379,6 +387,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     emit({ type: 'docsStatus', stats: this.docsService().stats() });
     this.postMcpStatusTarget(emit);
     emit({ type: 'openRouterKeySet', set: !!(await getOpenRouterKey(this.context.secrets)) });
+    emit({ type: 'googleKeySet', set: !!(await getGoogleKey(this.context.secrets)) });
     await this.postDevTarget(emit);
     emit({ type: 'history', messages: this.store.active().messages });
     this.postChatsTarget(emit);
@@ -459,7 +468,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.devModel = null;
       void this.context.globalState.update('fortressChat.devMode', false);
     }
-    if (this.selected?.provider !== 'local') this.selected = null;
+    if (this.selected?.provider !== 'local' && this.selected?.provider !== 'google') this.selected = null;
   }
 
   private async postDev(): Promise<void> {
@@ -473,6 +482,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private postContextWindow(): void {
     let tokens = 8192;
     if (this.selected?.provider === 'openrouter') tokens = this.selected.openrouter?.contextLength ?? 8192;
+    else if (this.selected?.provider === 'google') tokens = this.selected.google?.contextLength ?? 8192;
     this.post({ type: 'contextWindow', tokens });
   }
 
@@ -583,8 +593,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     await this.pushStatus();
   }
 
+  private cloudFallbackStatus(): StatusResponse {
+    return {
+      state: 'idle',
+      modelId: null,
+      endpoint: null,
+      download: null,
+      crashLog: null,
+      ram: { totalBytes: 0, availableBytes: 0 },
+      binaryInstalled: false,
+      downloadedModelIds: [],
+      downloadError: null,
+      embed: { state: 'idle', modelId: null, endpoint: null },
+    };
+  }
+
   private async pushStatus(): Promise<void> {
-    if (!this.client) return;
+    if (!this.client) {
+      this.post({ type: 'state', status: this.cloudFallbackStatus(), selectedId: this.selected?.id ?? null });
+      return;
+    }
     try {
       const status: StatusResponse = await this.client.status();
       this.post({ type: 'state', status, selectedId: this.selected?.id ?? null });
@@ -704,6 +732,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'addModel': return this.handleAddModel(String(m.slug));
         case 'setOpenRouterKey':
           return this.stopForPolicyViolation('Cloud models are not allowed.');
+        case 'setGoogleKey':
+          await setGoogleKey(this.context.secrets, String(m.key));
+          this.post({ type: 'googleKeySet', set: true });
+          return;
         case 'setFireworksKey':
           return this.stopForPolicyViolation('Developer mode and cloud models are not allowed.');
         case 'selectDevModel':
@@ -914,6 +946,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     return {
       localEndpoint: status?.endpoint ?? undefined,
       openRouterKey: await getOpenRouterKey(this.context.secrets),
+      googleKey: await getGoogleKey(this.context.secrets),
     };
   }
 
@@ -923,7 +956,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return resolveDevTarget(this.devModel, key ?? '');
     }
     if (this.selected) {
-      if (!this.client) this.client = await this.connect();
+      if (this.selected.provider === 'local' && !this.client) this.client = await this.connect();
       return resolveTarget(this.selected, await this.targetDeps());
     }
     throw new Error('Pick a model first.');

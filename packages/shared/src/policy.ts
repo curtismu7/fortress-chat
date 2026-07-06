@@ -40,8 +40,44 @@ export function openRouterEntries(): PolicyEntry[] {
   return [];
 }
 
+/** Curated Google Gemini models via the Google AI API (US-origin developer). */
+export function googleEntries(): PolicyEntry[] {
+  return [
+    {
+      id: 'google-gemini-2.5-flash',
+      displayName: 'Gemini 2.5 Flash',
+      provider: 'google',
+      agentCapable: true,
+      origin: { org: 'Google', country: 'US' },
+      hosting: { kind: 'google' },
+      approved: true,
+      google: { model: 'gemini-2.5-flash', contextLength: 1048576 },
+    },
+    {
+      id: 'google-gemini-2.5-pro',
+      displayName: 'Gemini 2.5 Pro',
+      provider: 'google',
+      agentCapable: true,
+      origin: { org: 'Google', country: 'US' },
+      hosting: { kind: 'google' },
+      approved: true,
+      google: { model: 'gemini-2.5-pro', contextLength: 1048576 },
+    },
+    {
+      id: 'google-gemini-2.0-flash',
+      displayName: 'Gemini 2.0 Flash',
+      provider: 'google',
+      agentCapable: true,
+      origin: { org: 'Google', country: 'US' },
+      hosting: { kind: 'google' },
+      approved: true,
+      google: { model: 'gemini-2.0-flash', contextLength: 1048576 },
+    },
+  ];
+}
+
 export function loadPolicy(): PolicyEntry[] {
-  return [...localEntries(), ...openRouterEntries()];
+  return [...localEntries(), ...googleEntries(), ...openRouterEntries()];
 }
 
 // Known non-US developer prefixes → human-readable reason. Used when a user tries
@@ -58,7 +94,7 @@ const NON_US: { test: RegExp; reason: string }[] = [
 /** Build the fatal policy message shown when a non-local / non-US model is attempted. */
 export function formatPolicyFatal(reason: string, slug?: string): string {
   const detail = slug ? ` Model "${slug}" is not allowed.` : '';
-  return `${reason}${detail}\n\nFortressChat supports local US models only.`;
+  return `${reason}${detail}\n\nFortressChat supports local US models and Google Gemini only.`;
 }
 
 export function explainBlock(slugOrId: string): string | null {

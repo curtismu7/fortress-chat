@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { loadPolicy, localEntries, openRouterEntries, explainBlock, formatPolicyFatal, LOCAL_US_ONLY, visibleLocalEntries, hiddenLocalEntries } from '../src/policy';
+import { loadPolicy, localEntries, openRouterEntries, googleEntries, explainBlock, formatPolicyFatal, LOCAL_US_ONLY, visibleLocalEntries, hiddenLocalEntries } from '../src/policy';
 import { isAllowed } from '../src/governance';
 
 describe('policy registry', () => {
@@ -29,9 +29,21 @@ describe('policy registry', () => {
     expect(openRouterEntries()).toEqual([]);
   });
 
-  it('loadPolicy is local entries only', () => {
-    expect(loadPolicy().length).toBe(localEntries().length);
-    expect(loadPolicy().every((e) => e.provider === 'local')).toBe(true);
+  it('includes curated Google Gemini entries', () => {
+    const google = googleEntries();
+    expect(google.length).toBe(3);
+    for (const e of google) {
+      expect(e.provider).toBe('google');
+      expect(e.origin).toEqual({ org: 'Google', country: 'US' });
+      expect(e.hosting.kind).toBe('google');
+      expect(isAllowed(e)).toBe(true);
+      expect(e.google?.model).toBeTruthy();
+    }
+  });
+
+  it('loadPolicy includes local and Google entries', () => {
+    expect(loadPolicy().length).toBe(localEntries().length + googleEntries().length);
+    expect(loadPolicy().some((e) => e.provider === 'google')).toBe(true);
   });
 
   it('explainBlock names known non-US developers and blocks cloud slugs', () => {
@@ -41,11 +53,12 @@ describe('policy registry', () => {
     expect(explainBlock('openai/gpt-4o')).toMatch(/Cloud models are not allowed/i);
     expect(explainBlock('some/unknown-model')).toMatch(/Cloud models are not allowed/i);
     expect(explainBlock(localEntries()[0]!.id)).toBeNull();
+    expect(explainBlock(googleEntries()[0]!.id)).toBeNull();
   });
 
   it('formatPolicyFatal includes the local-US-only message', () => {
     const msg = formatPolicyFatal('DeepSeek is a China-based developer.', 'deepseek/deepseek-chat');
-    expect(msg).toMatch(/local US models only/i);
+    expect(msg).toMatch(/Google Gemini/i);
     expect(msg).toContain('deepseek/deepseek-chat');
   });
 

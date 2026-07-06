@@ -6,6 +6,11 @@ const local = (over: Partial<PolicyEntry> = {}): PolicyEntry => ({
   origin: { org: 'Google', country: 'US' }, hosting: { kind: 'on-device' },
   approved: true, local: { catalogId: 'x' }, ...over,
 });
+const google = (over: Partial<PolicyEntry> = {}): PolicyEntry => ({
+  id: 'g', displayName: 'Gemini', provider: 'google', agentCapable: true,
+  origin: { org: 'Google', country: 'US' }, hosting: { kind: 'google' },
+  approved: true, google: { model: 'gemini-2.5-flash', contextLength: 1048576 }, ...over,
+});
 const or = (over: Partial<PolicyEntry> = {}): PolicyEntry => ({
   id: 'y', displayName: 'Y', provider: 'openrouter', agentCapable: true,
   origin: { org: 'OpenAI', country: 'US' },
@@ -15,6 +20,7 @@ const or = (over: Partial<PolicyEntry> = {}): PolicyEntry => ({
 
 describe('isAllowed', () => {
   it('allows an approved US on-device model', () => expect(isAllowed(local())).toBe(true));
+  it('allows an approved US Google Gemini model', () => expect(isAllowed(google())).toBe(true));
   it('allows an approved US OpenRouter model with US providers', () => expect(isAllowed(or())).toBe(true));
   it('blocks a non-approved model', () => expect(isAllowed(local({ approved: false }))).toBe(false));
   it('blocks OpenRouter with no US providers (fail closed)', () =>

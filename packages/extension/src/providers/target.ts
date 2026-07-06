@@ -3,6 +3,7 @@ import { assertAllowed, type PolicyEntry } from '@fortress-chat/shared';
 export interface TargetDeps {
   localEndpoint?: string;   // http://127.0.0.1:PORT from daemon status, when a local model is ready
   openRouterKey?: string;   // from SecretStorage, for OpenRouter entries
+  googleKey?: string;       // from SecretStorage, for Google Gemini entries
 }
 
 export interface ResolvedTarget {
@@ -21,6 +22,20 @@ export function resolveTarget(entry: PolicyEntry, deps: TargetDeps): ResolvedTar
       url: `${deps.localEndpoint}/v1/chat/completions`,
       headers: { 'content-type': 'application/json' },
       bodyExtra: {},
+    };
+  }
+
+  if (entry.provider === 'google') {
+    if (!deps.googleKey) throw new Error('No Google Gemini API key — add your key in Settings.');
+    if (entry.hosting.kind !== 'google' || !entry.google) throw new Error('Malformed Google Gemini entry');
+    return {
+      url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${deps.googleKey}`,
+      },
+      bodyExtra: {},
+      model: entry.google.model,
     };
   }
 
