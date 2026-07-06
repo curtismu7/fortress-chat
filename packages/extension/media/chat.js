@@ -303,6 +303,33 @@ function renderActionMenu() {
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
+function queueLabel(text) {
+  const line = String(text).trim().split('\n')[0];
+  if (!line) return 'Queued message';
+  return line.length > 56 ? `${line.slice(0, 53)}…` : line;
+}
+
+function renderPromptQueue(items) {
+  const box = $('prompt-queue');
+  if (!box) return;
+  if (!items || !items.length) { box.hidden = true; box.innerHTML = ''; return; }
+  box.hidden = false;
+  box.innerHTML = items.map((text, i) =>
+    `<div class="queue-item"><span class="queue-label">${esc(queueLabel(text))}</span><button type="button" class="queue-remove" data-idx="${i}" title="Remove from queue">×</button></div>`,
+  ).join('');
+  box.querySelectorAll('.queue-remove').forEach((b) => {
+    b.onclick = () => vscode.postMessage({ type: 'removeQueued', index: +b.dataset.idx });
+  });
+}
+
+function setGenerating(active) {
+  window.__generating = !!active;
+  const cancel = $('cancel');
+  const send = $('send');
+  if (cancel) cancel.hidden = !active;
+  if (send) send.title = active ? 'Queue message (sends after current reply)' : 'Send';
+}
+
 let cbCodes = [];
 function renderInline(t) {
   return esc(t)
@@ -563,6 +590,8 @@ window.addEventListener('message', (e) => {
   }
   if (m.type === 'searchResults') { renderChatPicker(m.metas, $('chat-picker') ? $('chat-picker').value : undefined); }
   if (m.type === 'contextWindow') { window.__ctxWindow = m.tokens; updateMeter(); }
+  if (m.type === 'queue') renderPromptQueue(m.items || []);
+  if (m.type === 'generating') setGenerating(!!m.active);
   if (m.type === 'devMode') {
     window.__dev = m.on;
     const ds = $('dev-settings');
@@ -968,9 +997,9 @@ $('send').onclick = () => {
   if (slash[cmd]) { const rest = t.slice(cmd.length).trim(); t = slash[cmd] + (rest ? ' ' + rest : ''); }
   $('input').value = ''; $('banner').hidden = true; $('steps').innerHTML = ''; $('steps').hidden = true;
   closeSlashMenu(); closeMentionMenu(); closeActionMenu(); resetInputHistoryBrowse();
-  turnReasoning = ''; vscode.postMessage({ type: 'send', text: t }); $('cancel').hidden = false; updateMeter(); resizeInput();
+  turnReasoning = ''; vscode.postMessage({ type: 'send', text: t }); if (!window.__generating) setGenerating(true); updateMeter(); resizeInput();
 };
-$('cancel').onclick = () => { vscode.postMessage({ type: 'cancel' }); $('cancel').hidden = true; };
+$('cancel').onclick = () => { vscode.postMessage({ type: 'cancel' }); setGenerating(false); };
 $('new-chat').onclick = () => { turnReasoning = ''; closeSettings(false); resetInputHistoryBrowse(); vscode.postMessage({ type: 'newChat' }); };
 { const _oec = $('open-editor-chat'); if (_oec) _oec.onclick = () => { closeSettings(false); vscode.postMessage({ type: 'openChatInEditor' }); }; }
 { const _mpb = $('model-picker-btn'); if (_mpb) _mpb.onclick = () => openModelPicker(); }

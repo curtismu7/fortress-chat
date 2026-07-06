@@ -53,6 +53,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private compareModelId: string | null = null;
   private store: SessionStore;
   private generating: AbortController | null = null;
+  private promptQueue: string[] = [];
   private agentMode = false;
   private chatMode: ChatMode = 'ask';
   private selected: PolicyEntry | null = null;
@@ -373,6 +374,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     await this.pushStatusTarget(emit);
     this.postAgentUndoTarget(emit);
     this.postChatModeTarget(emit);
+    emit({ type: 'queue', items: [...this.promptQueue] });
+    emit({ type: 'generating', active: !!this.generating });
   }
 
   private async syncWebview(webview: vscode.Webview): Promise<void> {
@@ -435,6 +438,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     let tokens = 8192;
     if (this.selected?.provider === 'openrouter') tokens = this.selected.openrouter?.contextLength ?? 8192;
     this.post({ type: 'contextWindow', tokens });
+  }
+
+  private postQueue(): void {
+    this.post({ type: 'queue', items: [...this.promptQueue] });
+  }
+
+  private postGenerating(active: boolean): void {
+    this.post({ type: 'generating', active });
+  }
+
+  private clearPromptQueue(): void {
+    this.promptQueue = [];
+    this.postQueue();
   }
 
   private async regenerate(): Promise<void> {
@@ -544,9 +560,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       switch (m.type) {
         case 'openChatInEditor': return await this.openInEditor();
         case 'send': return await this.handleSend(String(m.text));
+        case 'removeQueued': {
+          const i = Number(m.index);
+          if (Number.isInteger(i) && i >= 0 && i < this.promptQueue.length) {
+            this.promptQueue.splice(i, 1);
+            this.postQueue();
+          }
+          return;
+        }
         case 'cancel': this.generating?.abort(); return;
-        case 'newChat': this.generating?.abort(); this.store.newChat(); this.post({ type: 'history', messages: [] }); this.postChats(); return;
-        case 'switchChat': this.generating?.abort(); this.store.switchTo(String(m.id)); this.post({ type: 'history', messages: this.store.active().messages }); this.postChats(); return;
+        case 'newChat': this.generating?.abort(); this.clearPromptQueue(); this.store.newChat(); this.post({ type: 'history', messages: [] }); this.postChats(); return;
+        case 'switchChat': this.generating?.abort(); this.clearPromptQueue(); this.store.switchTo(String(m.id)); this.post({ type: 'history', messages: this.store.active().messages }); this.postChats(); return;
         case 'regenerate': return await this.regenerate();
         case 'editLoad': {
           const msgs = this.store.active().messages;
@@ -787,28 +811,49 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleSend(text: string): Promise<void> {
-    if (this.generating) { this.banner('Still generating — press Stop first.'); this.post({ type: 'restoreInput', text }); return; }
-    let target;
-    try {
-      target = await this.currentTarget();
-    } catch (e) {
-      this.banner(String(e instanceof Error ? e.message : e));
-      this.post({ type: 'restoreInput', text });
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    if (this.generating) {
+      this.promptQueue.push(trimmed);
+      this.postQueue();
       return;
     }
-    const params = this.prefs.params();
-    if (Object.keys(params).length) target = { ...target, bodyExtra: { ...target.bodyExtra, ...params } };
-    const session = this.store.active();
-    const ctx = await this.collectContext(text);
-    const preamble = buildContextPreamble(ctx);
-    const sys = this.systemPromptForChat() + (preamble ? '\n\n---\n' + preamble : '');
-    const preTurnLen = session.messages.length;
-    session.addUser(text);
-    this.post({ type: 'history', messages: session.messages });
+    await this.processSendQueue(trimmed);
+  }
+
+  private async processSendQueue(initial: string): Promise<void> {
+    let text: string | undefined = initial;
+    while (text) {
+      await this.executeSend(text);
+      text = this.promptQueue.shift();
+      if (text !== undefined) this.postQueue();
+    }
+  }
+
+  private async executeSend(text: string): Promise<void> {
     this.generating = new AbortController();
-    let usage: Usage | null = null;
-    const checkpoint = this.agentMode ? new AgentCheckpoint() : null;
+    this.postGenerating(true);
     try {
+      let target;
+      try {
+        target = await this.currentTarget();
+      } catch (e) {
+        this.banner(String(e instanceof Error ? e.message : e));
+        this.post({ type: 'restoreInput', text });
+        return;
+      }
+      const params = this.prefs.params();
+      if (Object.keys(params).length) target = { ...target, bodyExtra: { ...target.bodyExtra, ...params } };
+      const session = this.store.active();
+      const ctx = await this.collectContext(text);
+      const preamble = buildContextPreamble(ctx);
+      const sys = this.systemPromptForChat() + (preamble ? '\n\n---\n' + preamble : '');
+      const preTurnLen = session.messages.length;
+      session.addUser(text);
+      this.post({ type: 'history', messages: session.messages });
+      let usage: Usage | null = null;
+      const checkpoint = this.agentMode ? new AgentCheckpoint() : null;
+      try {
       if (this.compareModelId) {
         const entry = loadPolicy().find((e) => e.id === this.compareModelId);
         if (entry) {
@@ -855,14 +900,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.lastCheckpoint = checkpoint;
         this.postAgentUndo();
       }
-    } catch (e) {
-      session.messages.length = preTurnLen; // error hygiene: remove user msg + any tool exchange from the failed turn
-      this.store.save();
-      this.post({ type: 'history', messages: session.messages });
-      this.post({ type: 'restoreInput', text });
-      this.banner(String(e instanceof Error ? e.message : e));
+      } catch (e) {
+        session.messages.length = preTurnLen; // error hygiene: remove user msg + any tool exchange from the failed turn
+        this.store.save();
+        this.post({ type: 'history', messages: session.messages });
+        this.post({ type: 'restoreInput', text });
+        this.banner(String(e instanceof Error ? e.message : e));
+      }
     } finally {
       this.generating = null;
+      this.postGenerating(false);
     }
   }
 }
