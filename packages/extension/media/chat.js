@@ -11,12 +11,272 @@ let streaming = '';
 let provider = 'local';
 let policy = { local: [], openrouter: [] };
 let selectedId = null;
-let galleryUserToggled = false;
-function updateGalleryToggle() {
-  if (!$('gallery-toggle')) return;
-  const collapsed = $('gallery-body').hidden;
-  const active = ($('active-model').textContent || '').trim();
-  $('gallery-toggle').innerHTML = `${collapsed ? '▸' : '▾'} Models${collapsed && active ? ` · <span style="color:#4ec98a">${esc(active)}</span>` : ''}`;
+
+function openModelPicker() {
+  closeSettings(false);
+  const p = $('model-picker');
+  if (p) { p.hidden = false; window.__modelPickerOpen = true; }
+}
+function closeModelPicker() {
+  const p = $('model-picker');
+  if (p) { p.hidden = true; window.__modelPickerOpen = false; }
+}
+
+let chatMode = 'ask';
+let actionSub = null;
+let actionMenuOpen = false;
+let mcpServers = [];
+
+const ACTION_MODES = [
+  { id: 'plan', label: 'Plan', icon: '≡' },
+  { id: 'debug', label: 'Debug', icon: '⛭' },
+  { id: 'multitask', label: 'Multitask', icon: '↻' },
+  { id: 'ask', label: 'Ask', icon: '?' },
+];
+
+const ACTION_TOOLS = [
+  { id: 'image', label: 'Image', icon: '▣' },
+  { id: 'models', label: 'Models', icon: '◇', sub: true },
+  { id: 'skills', label: 'Skills', icon: '☰', sub: true },
+  { id: 'mcp', label: 'MCP Servers', icon: '⌁', sub: true },
+  { id: 'context', label: 'Context', icon: '@', sub: true },
+];
+
+function updateModeBadge() {
+  const badge = $('mode-badge');
+  if (!badge) return;
+  const labels = { ask: 'Ask', agent: 'Agent', plan: 'Plan', debug: 'Debug', multitask: 'Multitask' };
+  const mode = window.__compareId ? 'multitask' : chatMode;
+  if (mode === 'ask') { badge.hidden = true; return; }
+  badge.textContent = labels[mode] || mode;
+  badge.hidden = false;
+}
+
+function syncAgentToggle() {
+  const el = $('agent-toggle');
+  if (el) el.checked = chatMode === 'agent' || chatMode === 'plan' || chatMode === 'debug';
+}
+
+function closeActionMenu() {
+  const menu = $('action-menu');
+  const btn = $('action-btn');
+  if (menu) menu.hidden = true;
+  if (btn) btn.classList.remove('on');
+  actionMenuOpen = false;
+  actionSub = null;
+  const search = $('action-search');
+  if (search) search.value = '';
+}
+
+function openActionMenu(sub) {
+  closeSettings(false);
+  closeSlashMenu();
+  closeMentionMenu();
+  const menu = $('action-menu');
+  const btn = $('action-btn');
+  if (!menu) return;
+  actionSub = sub || null;
+  menu.hidden = false;
+  if (btn) btn.classList.add('on');
+  actionMenuOpen = true;
+  renderActionMenu();
+  const search = $('action-search');
+  if (search) { search.focus(); }
+}
+
+function actionFilter(text, items) {
+  const q = text.trim().toLowerCase();
+  if (!q) return items;
+  return items.filter((it) => it.label.toLowerCase().includes(q) || (it.hint && it.hint.toLowerCase().includes(q)));
+}
+
+function actionDivider() {
+  const d = document.createElement('div');
+  d.className = 'action-divider';
+  return d;
+}
+
+function actionRow(item, selected, showChevron) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'action-item' + (selected ? ' sel' : '');
+  btn.innerHTML = `<span class="action-icon">${item.icon}</span><span class="action-label">${esc(item.label)}</span>${selected ? '<span class="action-check">✓</span>' : (showChevron ? '<span class="action-chevron">›</span>' : '')}`;
+  return btn;
+}
+
+function insertAtCursor(text) {
+  const input = $('input');
+  if (!input) return;
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? start;
+  input.value = input.value.slice(0, start) + text + input.value.slice(end);
+  const pos = start + text.length;
+  input.setSelectionRange(pos, pos);
+  resizeInput();
+  updateMeter();
+}
+
+function handleActionItem(id) {
+  switch (id) {
+    case 'plan': case 'debug': case 'ask': case 'multitask':
+      vscode.postMessage({ type: 'setChatMode', mode: id });
+      if (id === 'multitask') { actionSub = 'multitask'; renderActionMenu(); }
+      else closeActionMenu();
+      break;
+    case 'image':
+      vscode.postMessage({ type: 'attachImage' });
+      closeActionMenu();
+      break;
+    case 'models':
+      closeActionMenu();
+      openModelPicker();
+      break;
+    case 'skills':
+      actionSub = 'skills';
+      renderActionMenu();
+      break;
+    case 'mcp':
+      actionSub = 'mcp';
+      renderActionMenu();
+      break;
+    case 'context':
+      actionSub = 'context';
+      renderActionMenu();
+      break;
+    default: break;
+  }
+}
+
+function renderActionSub(body, q) {
+  if (actionSub === 'skills') {
+    const personas = window.__personas || [];
+    const prompts = (window.__prefs && window.__prefs.prompts) || [];
+    const items = [
+      ...personas.map((p) => ({ id: 'persona:' + p.id, label: p.name, icon: '◉', hint: 'Persona' })),
+      ...prompts.map((p) => ({ id: 'prompt:' + p.id, label: promptLabel(p), icon: '✎', hint: 'Prompt' })),
+      { id: 'skills-settings', label: 'Manage in Settings…', icon: '⚙', hint: '' },
+    ];
+    const filtered = actionFilter(q, items);
+    if (!filtered.length) {
+      const empty = document.createElement('div');
+      empty.className = 'action-empty';
+      empty.textContent = 'No skills yet';
+      body.appendChild(empty);
+      return;
+    }
+    filtered.forEach((item) => {
+      const row = actionRow(item, false, false);
+      row.onclick = () => {
+        if (item.id.startsWith('persona:')) vscode.postMessage({ type: 'setPersona', id: item.id.slice(8) });
+        else if (item.id.startsWith('prompt:')) {
+          const p = prompts.find((x) => x.id === item.id.slice(7));
+          if (p) pickSlashItem(p);
+        } else openSettings(true);
+        closeActionMenu();
+      };
+      body.appendChild(row);
+    });
+    return;
+  }
+  if (actionSub === 'mcp') {
+    const servers = mcpServers || [];
+    if (!servers.length) {
+      const hint = document.createElement('div');
+      hint.className = 'action-hint';
+      hint.textContent = 'No MCP servers connected. Add them in VS Code settings.';
+      body.appendChild(hint);
+    } else {
+      servers.forEach((s) => {
+        const item = { label: s.name, icon: s.connected ? '●' : '○', hint: `${s.tools} tool${s.tools === 1 ? '' : 's'}` };
+        const row = actionRow(item, false, false);
+        row.disabled = true;
+        body.appendChild(row);
+      });
+    }
+    const cfg = actionRow({ label: 'Configure MCP servers…', icon: '⚙' }, false, true);
+    cfg.onclick = () => { vscode.postMessage({ type: 'openMcpSettings' }); closeActionMenu(); };
+    body.appendChild(cfg);
+    return;
+  }
+  if (actionSub === 'context') {
+    const items = [
+      { id: 'ctx:codebase', label: '@codebase', icon: '@', hint: 'Search indexed repo' },
+      { id: 'ctx:docs', label: '@docs', icon: '@', hint: 'Search documents' },
+      { id: 'ctx:files', label: 'Browse files…', icon: '@', hint: 'Pick a file mention' },
+    ];
+    actionFilter(q, items).forEach((item) => {
+      const row = actionRow(item, false, item.id === 'ctx:files');
+      row.onclick = () => {
+        if (item.id === 'ctx:codebase') insertAtCursor('@codebase ');
+        else if (item.id === 'ctx:docs') insertAtCursor('@docs ');
+        else { insertAtCursor('@'); vscode.postMessage({ type: 'listMentionFiles', query: '' }); }
+        closeActionMenu();
+        $('input')?.focus();
+      };
+      body.appendChild(row);
+    });
+    return;
+  }
+  if (actionSub === 'multitask') {
+    const models = [...(policy.local || []), ...(window.__orKeySet ? (policy.openrouter || []) : [])];
+    const hint = document.createElement('div');
+    hint.className = 'action-hint';
+    hint.textContent = 'Pick a second model to compare side-by-side.';
+    body.appendChild(hint);
+    actionFilter(q, models.map((m) => ({ id: 'cmp:' + m.id, label: m.displayName, icon: '◇', hint: m.provider === 'local' ? 'Local' : 'Cloud' }))).forEach((item) => {
+      const row = actionRow(item, window.__compareId === item.id.slice(4), false);
+      row.onclick = () => {
+        vscode.postMessage({ type: 'setCompareModel', id: item.id.slice(4) });
+        vscode.postMessage({ type: 'setChatMode', mode: 'multitask' });
+        closeActionMenu();
+      };
+      body.appendChild(row);
+    });
+    const none = actionRow({ label: 'Disable compare', icon: '×' }, !window.__compareId, false);
+    none.onclick = () => {
+      vscode.postMessage({ type: 'setCompareModel', id: null });
+      vscode.postMessage({ type: 'setChatMode', mode: 'ask' });
+      closeActionMenu();
+    };
+    body.appendChild(none);
+  }
+}
+
+function renderActionMenu() {
+  const body = $('action-body');
+  const search = $('action-search');
+  if (!body) return;
+  const q = search ? search.value : '';
+  body.innerHTML = '';
+
+  if (actionSub) {
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'action-back';
+    back.textContent = '← Back';
+    back.onclick = () => { actionSub = null; renderActionMenu(); };
+    body.appendChild(back);
+    renderActionSub(body, q);
+    return;
+  }
+
+  const modes = actionFilter(q, ACTION_MODES);
+  const tools = actionFilter(q, ACTION_TOOLS);
+  if (!modes.length && !tools.length) {
+    body.innerHTML = '<div class="action-empty">No matches</div>';
+    return;
+  }
+  modes.forEach((item) => {
+    const row = actionRow(item, item.id === chatMode, false);
+    row.onclick = () => handleActionItem(item.id);
+    body.appendChild(row);
+  });
+  if (modes.length && tools.length) body.appendChild(actionDivider());
+  tools.forEach((item) => {
+    const row = actionRow(item, false, !!item.sub);
+    row.onclick = () => handleActionItem(item.id);
+    body.appendChild(row);
+  });
 }
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
@@ -104,44 +364,50 @@ function enhanceRich(container) {
   } catch { /* rendering extras must never break chat */ }
 }
 
-function cardStatus(m, status) {
-  if (m.provider !== 'local') return { badge: '<span class="b b-ram">cloud</span>', bar: '' };
+function modelRowMeta(m, status) {
+  if (m.provider !== 'local') return { sub: 'Cloud · US providers pinned', action: '' };
   const cid = m.local.catalogId;
   if (status && status.download && status.download.modelId === cid && status.download.totalBytes) {
     const pct = Math.max(0, Math.min(100, Math.floor((status.download.receivedBytes / status.download.totalBytes) * 100)));
-    return { badge: `<span class="b b-dl">⬇ downloading ${pct}%</span>`, bar: `<progress class="dlbar" max="100" value="${pct}"></progress>` };
+    return { sub: 'On this Mac', action: `Downloading ${pct}%` };
   }
-  if (status && status.downloadedModelIds.includes(cid)) {
-    if (status.modelId === cid && status.state === 'ready') return { badge: '<span class="b b-ready">● ready</span>', bar: '' };
-    if (status.modelId === cid && (status.state === 'loading-model' || status.state === 'starting')) return { badge: '<span class="b b-dl">starting…</span>', bar: '' };
-    return { badge: '<span class="b b-ready">✓ downloaded</span>', bar: '' };
+  if (!status || !status.downloadedModelIds.includes(cid)) return { sub: 'On this Mac', action: 'Download' };
+  if (status.modelId === cid && (status.state === 'loading-model' || status.state === 'starting')) {
+    return { sub: 'On this Mac', action: 'Starting…' };
   }
-  return { badge: '<span class="b b-ram">⬇ download</span>', bar: '' };
-}
-
-function badges(m, status) {
-  const out = [`<span class="b b-us">🇺🇸 US · ${esc(m.origin.org)}</span>`];
-  out.push(m.provider === 'local' ? `<span class="b b-host">on-device</span>` : `<span class="b b-host">US providers pinned</span>`);
-  if (m.agentCapable) out.push(`<span class="b b-agent">agent</span>`);
-  out.push(cardStatus(m, status).badge);
-  return out.join('');
+  return { sub: 'On this Mac · Ready', action: '' };
 }
 
 function renderModels(status) {
-  const list = provider === 'local' ? policy.local : policy.openrouter;
-  $('models').innerHTML = list.map((m) => {
-    const cs = cardStatus(m, status);
-    return `<div class="mcard ${m.id === selectedId ? 'sel' : ''}" data-id="${m.id}">
-      <div class="mrow"><span class="mname">${esc(m.displayName)}</span>${m.id === selectedId ? '<span style="color:#4ec98a">✓</span>' : ''}</div>
-      <div class="badges">${badges(m, status)}</div>${cs.bar}</div>`;
-  }).join('');
-  document.querySelectorAll('.mcard').forEach((el) => el.onclick = () => {
-    const m = list.find((x) => x.id === el.dataset.id);
-    if (m && m.provider === 'local' && status && !status.downloadedModelIds.includes(m.local.catalogId)) {
-      vscode.postMessage({ type: 'downloadModel', catalogId: m.local.catalogId });
-    } else {
-      vscode.postMessage({ type: 'selectModel', id: el.dataset.id });
-    }
+  const box = $('models');
+  if (!box) return;
+  const local = policy.local || [];
+  const cloud = window.__orKeySet ? (policy.openrouter || []) : [];
+  const all = [...local, ...cloud];
+  const row = (m) => {
+    const meta = modelRowMeta(m, status);
+    const sel = m.id === selectedId;
+    const agent = m.agentCapable ? ' · Agent' : '';
+    return `<button type="button" class="model-row${sel ? ' sel' : ''}" data-id="${esc(m.id)}">
+      <span class="model-row-main">
+        <span class="model-row-name">${esc(m.displayName)}</span>
+        <span class="model-row-sub">${esc(meta.sub)}${agent}</span>
+      </span>
+      ${sel ? '<span class="model-row-check">✓</span>' : (meta.action ? `<span class="model-row-action">${esc(meta.action)}</span>` : '')}
+    </button>`;
+  };
+  box.innerHTML = local.map(row).join('') +
+    (cloud.length ? `<div class="model-group-label">Cloud models</div>${cloud.map(row).join('')}` : '');
+  box.querySelectorAll('.model-row').forEach((el) => {
+    el.onclick = () => {
+      const m = all.find((x) => x.id === el.dataset.id);
+      if (!m) return;
+      if (m.provider === 'local' && status && !status.downloadedModelIds.includes(m.local.catalogId)) {
+        vscode.postMessage({ type: 'downloadModel', catalogId: m.local.catalogId });
+        return;
+      }
+      vscode.postMessage({ type: 'selectModel', id: m.id });
+    };
   });
 }
 
@@ -151,56 +417,61 @@ function renderState(status) {
   const setup = $('setup');
   if (status.downloadError) {
     setup.hidden = false;
-    setup.innerHTML = `<b style="color:#e07a7a">⚠ ${esc(status.downloadError)}</b><p>Click the model again to retry.</p>`;
-  } else if (provider === 'local' && !status.binaryInstalled) {
+    openModelPicker();
+    setup.innerHTML = `<b style="color:#e07a7a">⚠ ${esc(status.downloadError)}</b><p>Tap the model again to retry.</p>`;
+  } else if (!status.binaryInstalled && !(window.__orKeySet && selectedId && (policy.openrouter || []).some((m) => m.id === selectedId))) {
     setup.hidden = false;
     const gb = Math.round(status.ram.totalBytes / 2 ** 30);
-    setup.innerHTML = `<b>Welcome to Fortress Code</b><p>This Mac has ${gb} GB RAM. One click installs the local engine.</p><button id="do-setup">Set up local engine</button>`;
-    $('do-setup').onclick = () => vscode.postMessage({ type: 'installBinary' });
+    setup.innerHTML = `<b>Welcome to Fortress Code</b><p>This Mac has ${gb} GB RAM. Set up the local engine to run models on-device.</p><button type="button" id="do-setup">Set up local engine</button>`;
+    const btn = $('do-setup');
+    if (btn) btn.onclick = () => vscode.postMessage({ type: 'installBinary' });
+    if (!selectedId && !window.__pickerShown) { window.__pickerShown = true; openModelPicker(); }
   } else if (status.download) {
     setup.hidden = false;
+    openModelPicker();
     const pct = Math.round((status.download.receivedBytes / status.download.totalBytes) * 100);
-    setup.innerHTML = `<p>Downloading… ${pct}%</p><progress max="100" value="${pct}"></progress>`;
+    setup.innerHTML = `<p>Downloading model… ${pct}%</p><progress max="100" value="${pct}"></progress>`;
   } else if (status.state === 'loading-model' || status.state === 'starting') {
-    setup.hidden = false; setup.innerHTML = `<p>Loading model…</p>`;
+    setup.hidden = false;
+    setup.innerHTML = `<p>Loading model…</p>`;
   } else setup.hidden = true;
 
-  const ready = provider === 'openrouter' ? !!selectedId : (status.state === 'ready' && !!selectedId);
-  $('chat-head').hidden = !selectedId; $('composer').hidden = !selectedId;
+  const m = selectedId ? [...(policy.local || []), ...(policy.openrouter || [])].find((x) => x.id === selectedId) : null;
+  const ready = !!m && (m.provider === 'openrouter' ? true : status.state === 'ready');
+  $('composer').hidden = !ready;
+  const empty = $('empty-state');
+  if (empty) empty.hidden = ready;
+  const msgs = $('messages');
+  if (msgs) msgs.hidden = !selectedId;
   $('send').disabled = !ready;
-  if (selectedId) {
-    const m = [...policy.local, ...policy.openrouter].find((x) => x.id === selectedId);
-    $('active-model').textContent = (provider === 'openrouter' ? '☁️ ' : '🖥 ') + (m ? m.displayName : '');
-    const agentEl = $('agent-toggle');
+  $('active-model').textContent = m ? m.displayName : 'Choose a model';
+  const agentEl = $('agent-toggle');
+  if (agentEl) {
     agentEl.disabled = !m || !m.agentCapable;
     if (agentEl.disabled) agentEl.checked = false;
   }
-  if (selectedId && !galleryUserToggled) $('gallery-body').hidden = true;
-  updateGalleryToggle();
+  if (ready && window.__modelPickerOpen) closeModelPicker();
+  if (!selectedId && !window.__pickerShown) { window.__pickerShown = true; openModelPicker(); }
 }
 
 function setProvider(p) {
-  provider = p; selectedId = null;
-  $('seg-local').classList.toggle('on', p === 'local');
-  $('seg-or').classList.toggle('on', p === 'openrouter');
-  $('req-local').hidden = p !== 'local';
-  $('req-or').hidden = p !== 'openrouter';
-  $('or-key').hidden = p !== 'openrouter' || window.__orKeySet;
-  $('add-row').hidden = p !== 'openrouter';
-  $('add-blocked').hidden = true;
+  provider = p;
   if (window.__status) renderState(window.__status);
 }
 
 window.addEventListener('message', (e) => {
   const m = e.data;
   if (m.type === 'policy') { policy = { local: m.local, openrouter: m.openrouter }; if (window.__status) renderState(window.__status); }
-  if (m.type === 'openRouterKeySet') { window.__orKeySet = m.set; $('or-key').hidden = provider !== 'openrouter' || m.set; }
+  if (m.type === 'openRouterKeySet') {
+    window.__orKeySet = m.set;
+    if (window.__status) renderState(window.__status);
+  }
   if (m.type === 'state') { selectedId = m.selectedId; renderState(m.status); }
   if (m.type === 'history') renderHistory(m.messages);
   if (m.type === 'startRejected') renderRejection(m.rejection, m.modelId);
   if (m.type === 'addBlocked') { $('add-blocked').hidden = false; $('add-blocked').innerHTML = `<b style="color:#e07a7a">⛔ Blocked by policy</b><p>${esc(m.reason)}</p><span class="b">✗ non-US</span><p style="margin-top:6px">Approved US models are listed above, or request an addition.</p>`; }
   if (m.type === 'addAccepted') { $('add-blocked').hidden = false; $('add-blocked').innerHTML = `<p>${esc(m.slug)} is already on the approved list — select it above.</p>`; }
-  if (m.type === 'restoreInput') $('input').value = m.text;
+  if (m.type === 'restoreInput') { $('input').value = m.text; resetInputHistoryBrowse(); resizeInput(); }
   if (m.type === 'error') {
     if (m.message) {
       $('banner-text').textContent = m.message; $('banner').hidden = false;
@@ -218,16 +489,35 @@ window.addEventListener('message', (e) => {
   if (m.type === 'reasoning') appendReasoning(m.text);
   if (m.type === 'reasoningDone') { const b = document.querySelector('.reasoning-live'); if (b) b.open = false; }
   if (m.type === 'usage' && m.usage) { const u = $('usage-last'); if (u) u.textContent = `↑${m.usage.promptTokens} ↓${m.usage.completionTokens} tok`; }
-  if (m.type === 'chats') { window.__lastChats = m; renderChatPicker(m.metas, m.activeId); }
+  if (m.type === 'chats') { window.__lastChats = m; renderChatPicker(m.metas, m.activeId); fillPersonaPicker(); }
   if (m.type === 'prefs') {
-    window.__prefs = { prompts: m.prompts || [], params: m.params || {}, personas: m.personas || [] };
-    fillParams(); renderPrompts(); renderPersonas(); fillComparePicker();
+    window.__prefs = { prompts: m.prompts || [], params: m.params || {} };
+    fillParams(); renderPrompts(); fillComparePicker();
+    if (actionMenuOpen && actionSub === 'skills') renderActionMenu();
   }
   if (m.type === 'memory') {
     window.__memory = m.data || { enabled: false, facts: [] };
     fillMemory();
   }
   if (m.type === 'folders') renderFolderFilter(m.folders || []);
+  if (m.type === 'personas') { window.__personas = m.personas || []; renderPersonas(); fillPersonaPicker(); if (actionMenuOpen && actionSub === 'skills') renderActionMenu(); }
+  if (m.type === 'chatMode') {
+    chatMode = m.mode || 'ask';
+    window.__compareId = m.compareId || null;
+    syncAgentToggle();
+    updateModeBadge();
+  }
+  if (m.type === 'mcpStatus') { mcpServers = m.servers || []; if (actionMenuOpen && actionSub === 'mcp') renderActionMenu(); }
+  if (m.type === 'openActionSub') openActionMenu(m.sub);
+  if (m.type === 'projectRules') {
+    const el = $('rules-path');
+    if (el) el.textContent = m.path ? `Rules: ${m.path}` : 'No rules file yet';
+  }
+  if (m.type === 'agentUndo') {
+    const btn = $('undo-agent');
+    if (btn) btn.disabled = !m.available;
+  }
+  if (m.type === 'mentionFiles') renderMentionMenu(m.items || []);
   if (m.type === 'docsStatus') {
     const s = m.stats || { files: 0, chunks: 0 };
     const el = $('docs-status'); if (el) el.textContent = s.chunks ? `${s.files} docs · ${s.chunks} chunks` : 'No docs indexed';
@@ -236,7 +526,7 @@ window.addEventListener('message', (e) => {
     const el = $('docs-status'); if (el) el.textContent = `Indexing docs ${m.done}/${m.total}…`;
   }
   if (m.type === 'attachedImages') {
-    const el = $('meter'); if (el) el.textContent = `${m.count} image(s) attached`;
+    const el = $('meter'); if (el) el.textContent = `${m.count} image(s) attached for next message`;
   }
   if (m.type === 'artifact') {
     const pane = $('artifact-pane'); const frame = $('artifact-frame');
@@ -252,10 +542,15 @@ window.addEventListener('message', (e) => {
   if (m.type === 'contextWindow') { window.__ctxWindow = m.tokens; updateMeter(); }
   if (m.type === 'devMode') {
     window.__dev = m.on;
-    $('dev').hidden = !m.on;
-    $('fw-key-row').hidden = m.fireworksKeySet;
-    $('dev-preset').innerHTML = '<option value="">— pick a Fireworks model —</option>' +
-      (m.presets || []).map((p) => `<option value="${p.slug}">${esc(p.label)}</option>`).join('');
+    const ds = $('dev-settings');
+    if (ds) ds.hidden = !m.on;
+    const fw = $('fw-key-row');
+    if (fw) fw.hidden = m.fireworksKeySet;
+    const preset = $('dev-preset');
+    if (preset) {
+      preset.innerHTML = '<option value="">— pick a Fireworks model —</option>' +
+        (m.presets || []).map((p) => `<option value="${p.slug}">${esc(p.label)}</option>`).join('');
+    }
   }
   if (m.type === 'ragStatus') {
     const s = m.stats || { files: 0, chunks: 0 };
@@ -273,8 +568,62 @@ window.addEventListener('message', (e) => {
   }
 });
 
+let inputHistory = [];
+let historyBrowseIdx = -1;
+let historyDraft = '';
+
+/** Keep sent user prompts for ↑/↓ recall in the composer. */
+function syncInputHistory(messages) {
+  inputHistory = (messages || []).filter((m) => m.role === 'user').map((m) => m.content);
+  resetInputHistoryBrowse();
+}
+
+function resetInputHistoryBrowse() {
+  historyBrowseIdx = -1;
+  historyDraft = '';
+}
+
+function canBrowseInputHistory() {
+  const el = $('input');
+  if (!el) return false;
+  const start = el.selectionStart ?? 0;
+  const end = el.selectionEnd ?? 0;
+  if (start !== end) return false;
+  return !el.value.slice(0, start).includes('\n');
+}
+
+function browseInputHistory(direction) {
+  const el = $('input');
+  if (!el || !inputHistory.length) return false;
+  const max = inputHistory.length - 1;
+  if (direction < 0) {
+    if (!canBrowseInputHistory()) return false;
+    if (historyBrowseIdx === -1) {
+      historyDraft = el.value;
+      historyBrowseIdx = 0;
+    } else if (historyBrowseIdx < max) historyBrowseIdx++;
+    else return true;
+    el.value = inputHistory[inputHistory.length - 1 - historyBrowseIdx];
+  } else {
+    if (historyBrowseIdx === -1) return false;
+    if (historyBrowseIdx === 0) {
+      historyBrowseIdx = -1;
+      el.value = historyDraft;
+    } else {
+      historyBrowseIdx--;
+      el.value = inputHistory[inputHistory.length - 1 - historyBrowseIdx];
+    }
+  }
+  const len = el.value.length;
+  el.setSelectionRange(len, len);
+  resizeInput();
+  updateMeter();
+  return true;
+}
+
 function renderHistory(messages) {
   streaming = ''; cbCodes = [];
+  syncInputHistory(messages);
   const shown = messages.map((m, i) => ({ m, i })).filter(({ m }) => m.role === 'user' || (m.role === 'assistant' && m.content));
   let lastA = -1; shown.forEach((x, k) => { if (x.m.role === 'assistant') lastA = k; });
   $('messages').innerHTML = shown.map(({ m, i }, k) => {
@@ -282,9 +631,9 @@ function renderHistory(messages) {
       const reason = (k === lastA && turnReasoning) ? `<details class="reasoning"><summary>▸ Reasoning</summary><pre>${esc(turnReasoning)}</pre></details>` : '';
       const foot = k === lastA ? `<div class="msg-foot"><button class="regen">↻ Regenerate</button><span class="usage" id="usage-last"></span></div>` : '';
       const sources = (m.sources && m.sources.length) ? `<div class="src-list" data-src-idx="${k}">Sources: </div>` : '';
-      return `<div class="msg assistant">${reason}${renderMarkdown(m.content)}${sources}${foot}</div>`;
+      return `<div class="msg assistant"><div class="assistant-body">${reason}${renderMarkdown(m.content)}${sources}${foot}</div></div>`;
     }
-    return `<div class="msg user"><pre>${esc(m.content)}</pre><button class="editmsg" data-idx="${i}" title="Edit &amp; resend">✎</button><button class="forkmsg" data-idx="${i}" title="Fork from here">⑂</button></div>`;
+    return `<div class="msg user"><div class="user-bubble"><pre>${esc(m.content)}</pre><button class="editmsg" data-idx="${i}" title="Edit &amp; resend">✎</button><button class="forkmsg" data-idx="${i}" title="Fork from here">⑂</button></div></div>`;
   }).join('');
   document.querySelectorAll('.src-list[data-src-idx]').forEach((el) => {
     const entry = shown[+el.dataset.srcIdx];
@@ -329,14 +678,17 @@ function updateMeter() {
   const win = window.__ctxWindow || 8192;
   const est = Math.ceil(($('input').value.length + 200) / 4);
   const el = $('meter'); if (!el) return;
-  el.textContent = `~${(est / 1000).toFixed(1)}k / ${Math.round(win / 1000)}k`;
+  el.textContent = `~${(est / 1000).toFixed(1)}k / ${Math.round(win / 1000)}k tokens`;
   el.classList.toggle('warn', est > win * 0.9);
 }
 function renderRejection(r, modelId) {
   const need = Math.round(r.requiredBytes / 2 ** 30), have = Math.round(r.availableBytes / 2 ** 30);
   const rows = r.foreign.map((p) => `<li>${esc(p.command.slice(0, 70))} — ${Math.round(p.rssBytes / 2 ** 30)} GB (pid ${p.pid})</li>`).join('');
-  $('setup').hidden = false;
-  $('setup').innerHTML = `<b>Not enough memory</b><p>Needs ~${need} GB but ${have} GB is available.</p>${r.foreign.length ? `<ul>${rows}</ul>` : ''}${r.wouldFitAfterForeignKill ? `<button id="kill-foreign">Stop those and continue</button>` : `<p>Even stopping those won't free enough — try a smaller model.</p>`}`;
+  const setup = $('setup');
+  if (!setup) return;
+  setup.hidden = false;
+  openModelPicker();
+  setup.innerHTML = `<b>Not enough memory</b><p>Needs ~${need} GB but ${have} GB is available.</p>${r.foreign.length ? `<ul>${rows}</ul>` : ''}${r.wouldFitAfterForeignKill ? `<button type="button" id="kill-foreign">Stop those and continue</button>` : `<p>Even stopping those won't free enough — try a smaller model.</p>`}`;
   const btn = $('kill-foreign');
   if (btn) btn.onclick = () => { vscode.postMessage({ type: 'killForeign', pids: r.foreign.map((p) => p.pid) }); setTimeout(() => vscode.postMessage({ type: 'selectModel', id: modelId }), 1500); };
 }
@@ -356,13 +708,10 @@ function fillParams() {
   const mt = $('p-maxtok'); if (mt) mt.value = params.max_tokens != null ? String(params.max_tokens) : '';
 }
 
-function renderPersonas() {
-  const list = (window.__prefs && window.__prefs.personas) || [];
-  const box = $('personas-list'); if (box) box.innerHTML = list.map((p) => `<div class="prompt-item"><span>${esc(p.name)}</span></div>`).join('');
-  const pick = $('persona-picker'); if (!pick) return;
-  const keep = pick.value;
-  pick.innerHTML = '<option value="">Default persona</option>' + list.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
-  pick.value = keep;
+function promptLabel(p) {
+  const line = (p.text || p.title || '').trim().split('\n')[0];
+  if (!line) return 'Prompt';
+  return line.length > 48 ? `${line.slice(0, 45)}…` : line;
 }
 
 function fillComparePicker() {
@@ -384,6 +733,107 @@ function renderFolderFilter(folders) {
   sel.value = keep;
 }
 
+function fillPersonaPicker() {
+  const pick = $('persona-picker'); if (!pick) return;
+  const list = window.__personas || [];
+  const metas = (window.__lastChats && window.__lastChats.metas) || [];
+  const activeId = (window.__lastChats && window.__lastChats.activeId) || ($('chat-picker') && $('chat-picker').value);
+  const meta = metas.find((c) => c.id === activeId);
+  pick.innerHTML = '<option value="">Default</option>' + list.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+  if (meta && meta.personaId) pick.value = meta.personaId;
+}
+
+function renderPersonas() {
+  const box = $('personas-list'); if (!box) return;
+  const list = window.__personas || [];
+  box.innerHTML = '';
+  list.forEach((p) => {
+    const row = document.createElement('div');
+    row.className = 'persona-item';
+    const use = document.createElement('span');
+    use.className = 'persona-use';
+    use.dataset.id = p.id;
+    use.textContent = p.name;
+    const del = document.createElement('button');
+    del.className = 'persona-del';
+    del.dataset.id = p.id;
+    del.textContent = '✕';
+    row.appendChild(use);
+    row.appendChild(del);
+    box.appendChild(row);
+  });
+}
+
+let mentionActive = -1;
+let mentionQuery = '';
+function closeMentionMenu() {
+  const menu = $('mention-menu');
+  if (menu) menu.hidden = true;
+  mentionActive = -1;
+  window.__mentionItems = [];
+}
+function renderMentionMenu(items) {
+  const menu = $('mention-menu');
+  if (!menu) return;
+  window.__mentionItems = items;
+  menu.innerHTML = items.map((it, i) =>
+    `<div class="mention-item${i === mentionActive ? ' active' : ''}" data-idx="${i}">${esc(it.label)}${it.hint ? `<span class="mention-hint">${esc(it.hint)}</span>` : ''}</div>`,
+  ).join('');
+  menu.hidden = items.length === 0;
+}
+function pickMentionItem(item) {
+  const input = $('input');
+  if (!input || !item) return;
+  const v = input.value;
+  const at = v.lastIndexOf('@');
+  if (at < 0) return;
+  const insert = item.id === 'codebase' ? '@codebase ' : item.id === 'docs' ? '@docs ' : `@${item.id} `;
+  input.value = v.slice(0, at) + insert;
+  closeMentionMenu();
+  input.focus();
+  resizeInput();
+  updateMeter();
+}
+function mentionAtCursor() {
+  const input = $('input');
+  if (!input) return null;
+  const v = input.value;
+  const pos = input.selectionStart ?? v.length;
+  const before = v.slice(0, pos);
+  const at = before.lastIndexOf('@');
+  if (at < 0) return null;
+  const chunk = before.slice(at + 1);
+  if (/\s/.test(chunk)) return null;
+  return { at, query: chunk };
+}
+
+function openSettings(open) {
+  if (open) closeModelPicker();
+  const panel = $('settings-panel');
+  const scrim = $('settings-scrim');
+  if (!panel || !scrim) return;
+  panel.hidden = !open;
+  scrim.hidden = !open;
+  if (open) { fillParams(); renderPrompts(); fillMemory(); renderPersonas(); fillPersonaPicker(); }
+}
+function closeSettings(open) {
+  if (open === false) {
+    const panel = $('settings-panel');
+    const scrim = $('settings-scrim');
+    if (panel) panel.hidden = true;
+    if (scrim) scrim.hidden = true;
+    return;
+  }
+  openSettings(false);
+}
+
+function resizeInput() {
+  const el = $('input');
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(160, Math.max(24, el.scrollHeight)) + 'px';
+}
+
 function renderPrompts() {
   const box = $('prompts-list');
   if (!box) return;
@@ -395,7 +845,7 @@ function renderPrompts() {
     const use = document.createElement('span');
     use.className = 'pr-title-use';
     use.dataset.id = p.id;
-    use.textContent = p.title;
+    use.textContent = promptLabel(p);
     const del = document.createElement('button');
     del.className = 'pr-del';
     del.dataset.id = p.id;
@@ -411,7 +861,7 @@ let slashActive = -1;
 function slashCandidates(filter) {
   const list = (window.__prefs && window.__prefs.prompts) || [];
   const f = filter.toLowerCase();
-  return list.filter((p) => p.title.toLowerCase().includes(f));
+  return list.filter((p) => promptLabel(p).toLowerCase().includes(f) || p.text.toLowerCase().includes(f));
 }
 function renderSlashMenu(items) {
   const menu = $('slash-menu');
@@ -421,7 +871,7 @@ function renderSlashMenu(items) {
     const row = document.createElement('div');
     row.className = 'slash-item' + (i === slashActive ? ' active' : '');
     row.dataset.idx = String(i);
-    row.textContent = p.title;
+    row.textContent = promptLabel(p);
     menu.appendChild(row);
   });
   menu.hidden = items.length === 0;
@@ -444,10 +894,15 @@ function pickSlashItem(p) {
   updateMeter();
 }
 
-$('seg-local').onclick = () => setProvider('local');
-$('seg-or').onclick = () => setProvider('openrouter');
-$('or-key-save').onclick = () => { const k = $('or-key-input').value.trim(); if (k) vscode.postMessage({ type: 'setOpenRouterKey', key: k }); };
-$('add-btn').onclick = () => { const s = $('add-slug').value.trim(); if (s) vscode.postMessage({ type: 'addModel', slug: s }); };
+{ const _ab = $('action-btn'); if (_ab) _ab.onclick = (e) => { e.stopPropagation(); actionMenuOpen ? closeActionMenu() : openActionMenu(); }; }
+{ const _as = $('action-search'); if (_as) _as.addEventListener('input', () => renderActionMenu()); }
+document.addEventListener('click', (e) => {
+  if (!actionMenuOpen) return;
+  if (e.target.closest('#action-menu') || e.target.closest('#action-btn')) return;
+  closeActionMenu();
+});
+{ const _ok = $('or-key-save'); if (_ok) _ok.onclick = () => { const k = $('or-key-input').value.trim(); if (k) vscode.postMessage({ type: 'setOpenRouterKey', key: k }); }; }
+{ const _ab = $('add-btn'); if (_ab) _ab.onclick = () => { const s = $('add-slug').value.trim(); if (s) vscode.postMessage({ type: 'addModel', slug: s }); }; }
 $('send').onclick = () => {
   let t = $('input').value.trim();
   if (!t) return;
@@ -455,16 +910,45 @@ $('send').onclick = () => {
   const cmd = t.split(/\s+/)[0];
   if (slash[cmd]) { const rest = t.slice(cmd.length).trim(); t = slash[cmd] + (rest ? ' ' + rest : ''); }
   $('input').value = ''; $('banner').hidden = true; $('steps').innerHTML = ''; $('steps').hidden = true;
-  turnReasoning = ''; vscode.postMessage({ type: 'send', text: t }); $('cancel').hidden = false; updateMeter();
+  closeSlashMenu(); closeMentionMenu(); closeActionMenu(); resetInputHistoryBrowse();
+  turnReasoning = ''; vscode.postMessage({ type: 'send', text: t }); $('cancel').hidden = false; updateMeter(); resizeInput();
 };
 $('cancel').onclick = () => { vscode.postMessage({ type: 'cancel' }); $('cancel').hidden = true; };
-$('new-chat').onclick = () => { turnReasoning = ''; vscode.postMessage({ type: 'newChat' }); };
-{ const _gt = $('gallery-toggle'); if (_gt) _gt.onclick = () => { galleryUserToggled = true; $('gallery-body').hidden = !$('gallery-body').hidden; updateGalleryToggle(); }; }
+$('new-chat').onclick = () => { turnReasoning = ''; closeSettings(false); resetInputHistoryBrowse(); vscode.postMessage({ type: 'newChat' }); };
+{ const _oec = $('open-editor-chat'); if (_oec) _oec.onclick = () => { closeSettings(false); vscode.postMessage({ type: 'openChatInEditor' }); }; }
+{ const _mpb = $('model-picker-btn'); if (_mpb) _mpb.onclick = () => openModelPicker(); }
+{ const _epm = $('empty-pick-model'); if (_epm) _epm.onclick = () => openModelPicker(); }
+{ const _mpc = $('model-picker-close'); if (_mpc) _mpc.onclick = () => closeModelPicker(); }
+{ const _mps = $('model-picker-scrim'); if (_mps) _mps.onclick = () => closeModelPicker(); }
 { const _ri = $('rag-index'); if (_ri) _ri.onclick = () => { $('rag-index').disabled = true; vscode.postMessage({ type: 'indexWorkspace' }); }; }
 $('chat-picker').onchange = (e) => { turnReasoning = ''; vscode.postMessage({ type: 'switchChat', id: e.target.value }); };
-$('input').addEventListener('input', updateMeter);
-$('agent-toggle').onchange = (e) => vscode.postMessage({ type: 'agentToggle', on: e.target.checked });
+$('input').addEventListener('input', () => {
+  if (historyBrowseIdx >= 0) {
+    const expected = inputHistory[inputHistory.length - 1 - historyBrowseIdx];
+    if ($('input').value !== expected) resetInputHistoryBrowse();
+  }
+  updateMeter();
+  resizeInput();
+});
+{ const _at = $('agent-toggle'); if (_at) _at.onchange = (e) => vscode.postMessage({ type: 'agentToggle', on: e.target.checked }); }
 $('banner-close').onclick = () => { $('banner').hidden = true; };
+
+{ const _sb = $('settings-btn'); if (_sb) _sb.onclick = () => openSettings(true); }
+{ const _sc = $('settings-close'); if (_sc) _sc.onclick = () => closeSettings(false); }
+{ const _ss = $('settings-scrim'); if (_ss) _ss.onclick = () => closeSettings(false); }
+{ const _ro = $('rules-open'); if (_ro) _ro.onclick = () => vscode.postMessage({ type: 'openRulesFile' }); }
+{ const _ua = $('undo-agent'); if (_ua) _ua.onclick = () => vscode.postMessage({ type: 'undoAgentRun' }); }
+{ const _pp = $('persona-picker'); if (_pp) _pp.onchange = () => vscode.postMessage({ type: 'setPersona', id: _pp.value || null }); }
+{ const _psv = $('persona-save'); if (_psv) _psv.onclick = () => {
+  const name = ($('persona-name')?.value || '').trim();
+  const systemPrompt = ($('persona-prompt')?.value || '').trim();
+  if (!name || !systemPrompt) return;
+  const id = window.__editingPersonaId || crypto.randomUUID();
+  vscode.postMessage({ type: 'savePersona', persona: { id, name, systemPrompt } });
+  window.__editingPersonaId = null;
+  if ($('persona-name')) $('persona-name').value = '';
+  if ($('persona-prompt')) $('persona-prompt').value = '';
+}; }
 
 { const _cs = $('chat-search'); if (_cs) _cs.oninput = () => {
   const q = _cs.value;
@@ -479,28 +963,16 @@ $('banner-close').onclick = () => { $('banner').hidden = true; };
   }
   _ff.oninput && $('chat-search').dispatchEvent(new Event('input'));
 }; }
-{ const _pp = $('persona-picker'); if (_pp) _pp.onchange = () => vscode.postMessage({ type: 'setPersona', personaId: _pp.value || null }); }
 { const _cp = $('compare-picker'); if (_cp) _cp.onchange = () => vscode.postMessage({ type: 'setCompareModel', id: _cp.value || null }); }
 { const _di = $('docs-index'); if (_di) _di.onclick = () => vscode.postMessage({ type: 'indexDocs' }); }
 { const _ai = $('attach-img'); if (_ai) _ai.onclick = () => vscode.postMessage({ type: 'attachImage' }); }
-{ const _sb = $('speak-btn'); if (_sb) _sb.onclick = () => vscode.postMessage({ type: 'speakLast' }); }
-{ const _mb = $('memory-btn'); if (_mb) _mb.onclick = () => { const mgr = $('memory-mgr'); if (mgr) { mgr.hidden = !mgr.hidden; fillMemory(); } }; }
-{ const _mc = $('memory-close'); if (_mc) _mc.onclick = () => { const mgr = $('memory-mgr'); if (mgr) mgr.hidden = true; }; }
+{ const _sb2 = $('speak-btn'); if (_sb2) _sb2.onclick = () => vscode.postMessage({ type: 'speakLast' }); }
 { const _ms = $('mem-save'); if (_ms) _ms.onclick = () => {
   const facts = ($('mem-facts')?.value || '').split('\n').map((l) => l.trim()).filter(Boolean);
   vscode.postMessage({ type: 'setMemory', enabled: !!$('mem-enabled')?.checked, facts });
 }; }
-{ const _pb2 = $('personas-btn'); if (_pb2) _pb2.onclick = () => { const mgr = $('personas-mgr'); if (mgr) { mgr.hidden = !mgr.hidden; renderPersonas(); } }; }
-{ const _pc = $('personas-close'); if (_pc) _pc.onclick = () => { const mgr = $('personas-mgr'); if (mgr) mgr.hidden = true; }; }
-{ const _ps2 = $('pe-save'); if (_ps2) _ps2.onclick = () => {
-  const name = $('pe-name')?.value.trim(); const text = $('pe-prompt')?.value.trim();
-  if (!name || !text) return;
-  vscode.postMessage({ type: 'savePersona', persona: { id: crypto.randomUUID(), name, systemPrompt: text } });
-  $('pe-name').value = ''; $('pe-prompt').value = '';
-}; }
 { const _ac = $('artifact-close'); if (_ac) _ac.onclick = () => { const p = $('artifact-pane'); if (p) p.hidden = true; }; }
 { const _ec = $('export-chat'); if (_ec) _ec.onclick = () => vscode.postMessage({ type: 'exportChat' }); }
-{ const _pb = $('params-btn'); if (_pb) _pb.onclick = () => { const pop = $('params-pop'); if (pop) pop.hidden = !pop.hidden; }; }
 { const _pa = $('params-apply'); if (_pa) _pa.onclick = () => {
   const params = {};
   const t = $('p-temp'); if (t && t.value !== '') params.temperature = Number(t.value);
@@ -508,31 +980,44 @@ $('banner-close').onclick = () => { $('banner').hidden = true; };
   const mt = $('p-maxtok'); if (mt && mt.value !== '') params.max_tokens = Number(mt.value);
   vscode.postMessage({ type: 'setParams', params });
 }; }
-{ const _prb = $('prompts-btn'); if (_prb) _prb.onclick = () => { const mgr = $('prompts-mgr'); if (mgr) { mgr.hidden = !mgr.hidden; if (!mgr.hidden) renderPrompts(); } }; }
-{ const _pcl = $('prompts-close'); if (_pcl) _pcl.onclick = () => { const mgr = $('prompts-mgr'); if (mgr) mgr.hidden = true; }; }
 { const _ps = $('pr-save'); if (_ps) _ps.onclick = () => {
-  const titleEl = $('pr-title'); const textEl = $('pr-text');
-  if (!titleEl || !textEl) return;
-  const title = titleEl.value.trim();
-  const text = textEl.value;
-  if (!title || !text.trim()) return;
+  const textEl = $('pr-text');
+  if (!textEl) return;
+  const text = textEl.value.trim();
+  if (!text) return;
   const id = window.__editingPromptId || crypto.randomUUID();
+  const title = text.split('\n')[0].trim().slice(0, 60) || 'Prompt';
   vscode.postMessage({ type: 'savePrompt', prompt: { id, title, text } });
   window.__editingPromptId = null;
-  titleEl.value = ''; textEl.value = '';
+  textEl.value = '';
 }; }
 document.addEventListener('click', (e) => {
   const del = e.target.closest && e.target.closest('.pr-del');
   if (del) { vscode.postMessage({ type: 'deletePrompt', id: del.dataset.id }); return; }
+  const pDel = e.target.closest && e.target.closest('.persona-del');
+  if (pDel) { vscode.postMessage({ type: 'deletePersona', id: pDel.dataset.id }); return; }
+  const pUse = e.target.closest && e.target.closest('.persona-use');
+  if (pUse) {
+    const list = window.__personas || [];
+    const p = list.find((x) => x.id === pUse.dataset.id);
+    if (p) {
+      window.__editingPersonaId = p.id;
+      if ($('persona-name')) $('persona-name').value = p.name;
+      if ($('persona-prompt')) $('persona-prompt').value = p.systemPrompt;
+    }
+    return;
+  }
   const use = e.target.closest && e.target.closest('.pr-title-use');
   if (use) {
     const list = (window.__prefs && window.__prefs.prompts) || [];
     const p = list.find((x) => x.id === use.dataset.id);
-    if (p) { const te = $('pr-title'); const xe = $('pr-text'); if (te) te.value = p.title; if (xe) xe.value = p.text; window.__editingPromptId = p.id; }
+    if (p) { const xe = $('pr-text'); if (xe) xe.value = p.text; window.__editingPromptId = p.id; }
     return;
   }
   const item = e.target.closest && e.target.closest('.slash-item');
-  if (item) { pickSlashItem((window.__slashItems || [])[+item.dataset.idx]); }
+  if (item) { pickSlashItem((window.__slashItems || [])[+item.dataset.idx]); return; }
+  const mention = e.target.closest && e.target.closest('.mention-item');
+  if (mention) { pickMentionItem((window.__mentionItems || [])[+mention.dataset.idx]); }
 });
 let slashPrevValue = '';
 { const _in = $('input'); if (_in) _in.addEventListener('input', () => {
@@ -543,12 +1028,29 @@ let slashPrevValue = '';
     slashActive = items.length ? 0 : -1;
     window.__slashItems = items;
     renderSlashMenu(items);
+    closeMentionMenu();
   } else {
     closeSlashMenu();
+    const ctx = mentionAtCursor();
+    if (ctx) {
+      mentionQuery = ctx.query;
+      mentionActive = 0;
+      vscode.postMessage({ type: 'listMentionFiles', query: ctx.query });
+    } else {
+      closeMentionMenu();
+    }
   }
   slashPrevValue = v;
 }); }
 { const _in = $('input'); if (_in) _in.addEventListener('keydown', (e) => {
+  const mentionMenu = $('mention-menu');
+  if (mentionMenu && !mentionMenu.hidden) {
+    const items = window.__mentionItems || [];
+    if (e.key === 'ArrowDown') { e.preventDefault(); mentionActive = Math.min(items.length - 1, mentionActive + 1); renderMentionMenu(items); return; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); mentionActive = Math.max(0, mentionActive - 1); renderMentionMenu(items); return; }
+    if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); e.stopImmediatePropagation(); pickMentionItem(items[mentionActive]); return; }
+    if (e.key === 'Escape') { e.preventDefault(); closeMentionMenu(); return; }
+  }
   const menu = $('slash-menu');
   if (!menu || menu.hidden) return;
   const items = window.__slashItems || [];
@@ -573,17 +1075,28 @@ $('messages').addEventListener('click', (e) => {
   const fm = e.target.closest('.forkmsg');
   if (fm) { turnReasoning = ''; vscode.postMessage({ type: 'forkChat', index: +fm.dataset.idx }); return; }
 });
-$('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('send').click(); } });
+$('input').addEventListener('keydown', (e) => {
+  const mentionMenu = $('mention-menu');
+  const slashMenu = $('slash-menu');
+  if ((mentionMenu && !mentionMenu.hidden) || (slashMenu && !slashMenu.hidden)) return;
+  if (e.key === 'ArrowUp' && browseInputHistory(-1)) { e.preventDefault(); return; }
+  if (e.key === 'ArrowDown' && browseInputHistory(1)) { e.preventDefault(); return; }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('send').click(); }
+});
 
 $('fw-key-save').onclick = () => { const k = $('fw-key').value.trim(); if (k) vscode.postMessage({ type: 'setFireworksKey', key: k }); };
 $('dev-use').onclick = () => {
   const slug = ($('dev-slug').value.trim() || $('dev-preset').value || '').trim();
   if (!slug) return;
   vscode.postMessage({ type: 'selectDevModel', slug });
-  $('chat-head').hidden = false; $('composer').hidden = false; $('send').disabled = false;
-  $('active-model').innerHTML = '<span class="dev-active">⚠ DEV · ' + esc(slug) + '</span>';
-  if (!galleryUserToggled) $('gallery-body').hidden = true;
-  updateGalleryToggle();
+  $('composer').hidden = false;
+  $('send').disabled = false;
+  $('active-model').innerHTML = '<span class="dev-active">' + esc(slug) + '</span>';
+  const empty = $('empty-state');
+  if (empty) empty.hidden = true;
+  closeSettings(false);
 };
 
 setProvider('local');
+resizeInput();
+updateModeBadge();

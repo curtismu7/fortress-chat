@@ -9,8 +9,10 @@ export function activate(context: vscode.ExtensionContext): void {
   const provider = new ChatViewProvider(context, () => ensureDaemon(managerEntry));
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('fortressCode.chat', provider),
+    vscode.commands.registerCommand('fortress-code.openChatInEditor', () => provider.openInEditor()),
     vscode.commands.registerCommand('fortress-code.openChat', () =>
       vscode.commands.executeCommand('fortressCode.chat.focus')),
+    vscode.commands.registerCommand('fortress-code.reloadWebview', () => provider.reloadWebviews()),
     vscode.commands.registerCommand('fortress-code.toggleDevMode', async () => {
       const on = !context.globalState.get<boolean>('fortressCode.devMode', false);
       if (on) {
@@ -49,6 +51,12 @@ export function activate(context: vscode.ExtensionContext): void {
       });
     }),
   );
+
+  if (process.env.FORTRESS_CODE_TEST === '1') {
+    context.subscriptions.push(
+      vscode.commands.registerCommand('fortress-code.test.getWebviewState', () => provider.getTestState()),
+    );
+  }
 }
 
 export function deactivate(): void {}
