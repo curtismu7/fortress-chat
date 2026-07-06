@@ -8,15 +8,15 @@ export function activate(context: vscode.ExtensionContext): void {
   const managerEntry = join(context.extensionPath, 'out', 'manager', 'index.js');
   const provider = new ChatViewProvider(context, () => ensureDaemon(managerEntry));
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('fortressCode.chat', provider),
-    vscode.commands.registerCommand('fortress-code.openChatInEditor', () => provider.openInEditor()),
-    vscode.commands.registerCommand('fortress-code.openChat', () =>
-      vscode.commands.executeCommand('fortressCode.chat.focus')),
-    vscode.commands.registerCommand('fortress-code.reloadWebview', () => provider.reloadWebviews()),
-    vscode.commands.registerCommand('fortress-code.reloadMcp', () => provider.reloadMcpServers()),
-    vscode.commands.registerCommand('fortress-code.reloadSkills', () => provider.reloadSkillsList()),
-    vscode.commands.registerCommand('fortress-code.toggleDevMode', async () => {
-      const on = !context.globalState.get<boolean>('fortressCode.devMode', false);
+    vscode.window.registerWebviewViewProvider('fortressChat.chat', provider),
+    vscode.commands.registerCommand('fortress-chat.openChatInEditor', () => provider.openInEditor()),
+    vscode.commands.registerCommand('fortress-chat.openChat', () =>
+      vscode.commands.executeCommand('fortressChat.chat.focus')),
+    vscode.commands.registerCommand('fortress-chat.reloadWebview', () => provider.reloadWebviews()),
+    vscode.commands.registerCommand('fortress-chat.reloadMcp', () => provider.reloadMcpServers()),
+    vscode.commands.registerCommand('fortress-chat.reloadSkills', () => provider.reloadSkillsList()),
+    vscode.commands.registerCommand('fortress-chat.toggleDevMode', async () => {
+      const on = !context.globalState.get<boolean>('fortressChat.devMode', false);
       if (on) {
         const ok = await vscode.window.showWarningMessage(
           'Developer Mode bypasses the US-only governance and lets you use any Fireworks model (including non-US). Continue?',
@@ -24,22 +24,22 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         if (ok !== 'Enable') return;
       }
-      await context.globalState.update('fortressCode.devMode', on);
+      await context.globalState.update('fortressChat.devMode', on);
       provider.setDevMode(on);
-      void vscode.window.showInformationMessage(`Fortress Code Developer Mode ${on ? 'ON — governance BYPASSED' : 'off'}`);
+      void vscode.window.showInformationMessage(`FortressChat Developer Mode ${on ? 'ON — governance BYPASSED' : 'off'}`);
     }),
     ...['explain', 'fix', 'test', 'refactor', 'doc'].map((k) =>
-      vscode.commands.registerCommand(`fortress-code.${k}Selection`, async () => {
-        await vscode.commands.executeCommand('fortressCode.chat.focus');
+      vscode.commands.registerCommand(`fortress-chat.${k}Selection`, async () => {
+        await vscode.commands.executeCommand('fortressChat.chat.focus');
         provider.runSelectionAction(k);
       })),
-    vscode.commands.registerCommand('fortress-code.inlineEdit', async () => {
+    vscode.commands.registerCommand('fortress-chat.inlineEdit', async () => {
       const ed = vscode.window.activeTextEditor;
       if (!ed) { void vscode.window.showErrorMessage('Open a file first.'); return; }
       const range = ed.selection.isEmpty ? ed.document.lineAt(ed.selection.active.line).range : ed.selection;
-      const instruction = await vscode.window.showInputBox({ prompt: 'Fortress Code — inline edit', placeHolder: 'e.g. add error handling' });
+      const instruction = await vscode.window.showInputBox({ prompt: 'FortressChat — inline edit', placeHolder: 'e.g. add error handling' });
       if (!instruction) return;
-      await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Fortress Code editing…', cancellable: true }, async (_p, token) => {
+      await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'FortressChat editing…', cancellable: true }, async (_p, token) => {
         const ac = new AbortController();
         token.onCancellationRequested(() => ac.abort());
         try {
@@ -54,9 +54,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  if (process.env.FORTRESS_CODE_TEST === '1') {
+  if (process.env.FORTRESS_CHAT_TEST === '1') {
     context.subscriptions.push(
-      vscode.commands.registerCommand('fortress-code.test.getWebviewState', () => provider.getTestState()),
+      vscode.commands.registerCommand('fortress-chat.test.getWebviewState', () => provider.getTestState()),
     );
   }
 }

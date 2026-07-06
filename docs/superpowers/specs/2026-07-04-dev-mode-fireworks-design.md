@@ -1,4 +1,4 @@
-# Fortress Code — Developer Mode (Fireworks bypass) design
+# FortressChat — Developer Mode (Fireworks bypass) design
 
 **Status:** Approved (brainstorming session with Curtis, 2026-07-04)
 **Builds on:** `2026-07-03-governance-openrouter-design.md` (Local + OpenRouter governed providers).
@@ -17,10 +17,10 @@ Fireworks AI is itself a US company (Redwood City, CA) with an OpenAI-compatible
 |---|---|
 | Purpose | Escape hatch that **bypasses** US-only governance (not a governed provider) |
 | Transport | Fireworks OpenAI-compatible API: `https://api.fireworks.ai/inference/v1/chat/completions` |
-| Trigger | Command `fortress-code.toggleDevMode`, keybinding **`ctrl+alt+m`**, palette title "Fortress Code: Toggle Developer Mode" |
+| Trigger | Command `fortress-chat.toggleDevMode`, keybinding **`ctrl+alt+m`**, palette title "FortressChat: Toggle Developer Mode" |
 | First-enable | One-time modal confirm: "This bypasses the US-only governance. Continue?" |
 | Model input | Small preset list **+ free-text** Fireworks slug |
-| Key storage | SecretStorage, id `fortressCode.fireworksKey`; never on disk / never sent to the webview / never committed |
+| Key storage | SecretStorage, id `fortressChat.fireworksKey`; never on disk / never sent to the webview / never committed |
 | Visibility | Dev section hidden unless on; persistent red bypass banner + "⚠ DEV" marker when on |
 | Persistence | `devMode` flag in extension `globalState` |
 
@@ -45,7 +45,7 @@ Extension-only; no daemon change; the `shared` governance layer is untouched.
   - Mixtral 8x22B — `accounts/fireworks/models/mixtral-8x22b-instruct`
   - **GLM-5.2 — `accounts/fireworks/models/glm-5p2`** (verified live)
   (Slugs are best-effort; the free-text box is the reliable fallback and download/inference errors surface via the existing error path.)
-- **`extension/src/extension.ts`** — register `toggleDevMode`: on first enable show the modal confirm; flip `globalState('fortressCode.devMode')`; notify the provider, which posts `{type:'devMode', on}` to the webview.
+- **`extension/src/extension.ts`** — register `toggleDevMode`: on first enable show the modal confirm; flip `globalState('fortressChat.devMode')`; notify the provider, which posts `{type:'devMode', on}` to the webview.
 - **`extension/src/chat/ChatViewProvider.ts`** — hold `devMode`; on toggle, post state + presets + whether a Fireworks key is set; handle `setFireworksKey` and a `devModel` selection (slug). In `handleSend`, if a dev model is selected **and** devMode is on, build the target via `resolveDevTarget` (bypass) instead of `resolveTarget`; otherwise the normal guarded path is used verbatim.
 - **`extension/package.json`** — contribute the command + keybinding.
 - **`extension/media/chat.*`** — a Dev section (shown only when `devMode`): the red bypass banner, Fireworks key field, preset `<select>` + free-text input, and a "⚠ DEV" marker in the header when a dev model is active.

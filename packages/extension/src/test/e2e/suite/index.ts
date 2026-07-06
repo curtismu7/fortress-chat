@@ -2,7 +2,7 @@
 import * as assert from 'node:assert';
 import * as vscode from 'vscode';
 
-const EXT_ID = 'coachcurtis.fortress-code';
+const EXT_ID = 'coachcurtis.fortress-chat';
 
 type WebviewTestState = {
   webviewCount: number;
@@ -20,7 +20,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function getWebviewState(): Promise<WebviewTestState> {
-  return vscode.commands.executeCommand('fortress-code.test.getWebviewState') as Promise<WebviewTestState>;
+  return vscode.commands.executeCommand('fortress-chat.test.getWebviewState') as Promise<WebviewTestState>;
 }
 
 /** Smoke + webview wiring tests run inside the Extension Development Host. */
@@ -32,11 +32,11 @@ export async function run(): Promise<void> {
 
   const cmds = await vscode.commands.getCommands(true);
   for (const id of [
-    'fortress-code.openChat',
-    'fortress-code.openChatInEditor',
-    'fortress-code.reloadWebview',
-    'fortress-code.toggleDevMode',
-    'fortress-code.test.getWebviewState',
+    'fortress-chat.openChat',
+    'fortress-chat.openChatInEditor',
+    'fortress-chat.reloadWebview',
+    'fortress-chat.toggleDevMode',
+    'fortress-chat.test.getWebviewState',
   ]) {
     assert.ok(cmds.includes(id), `missing command ${id}`);
   }
@@ -47,7 +47,7 @@ export async function run(): Promise<void> {
   );
 
   await assert.doesNotReject(async () => {
-    await vscode.commands.executeCommand('fortressCode.chat.focus');
+    await vscode.commands.executeCommand('fortressChat.chat.focus');
   });
 
   await sleep(3000);
@@ -63,13 +63,13 @@ export async function run(): Promise<void> {
     'project rules path should point at fixture rules file',
   );
 
-  await vscode.commands.executeCommand('fortress-code.openChatInEditor');
+  await vscode.commands.executeCommand('fortress-chat.openChatInEditor');
   await sleep(1500);
   state = await getWebviewState();
   assert.ok(state.webviewCount >= 2, 'editor tab webview should attach alongside sidebar');
 
   await assert.doesNotReject(async () => {
-    await vscode.commands.executeCommand('fortress-code.reloadWebview');
+    await vscode.commands.executeCommand('fortress-chat.reloadWebview');
   });
   state = await getWebviewState();
   assert.ok(state.webviewCount >= 2, 'webviews should survive hot reload');

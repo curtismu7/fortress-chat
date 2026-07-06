@@ -1,4 +1,4 @@
-import { assertAllowed, type PolicyEntry } from '@fortress-code/shared';
+import { assertAllowed, type PolicyEntry } from '@fortress-chat/shared';
 
 export interface TargetDeps {
   localEndpoint?: string;   // http://127.0.0.1:PORT from daemon status, when a local model is ready
@@ -32,8 +32,8 @@ export function resolveTarget(entry: PolicyEntry, deps: TargetDeps): ResolvedTar
     headers: {
       'content-type': 'application/json',
       authorization: `Bearer ${deps.openRouterKey}`,
-      'http-referer': 'https://github.com/curtismuir/fortress-code',
-      'x-title': 'Fortress Code',
+      'http-referer': 'https://github.com/curtismuir/fortress-chat',
+      'x-title': 'FortressChat',
     },
     bodyExtra: {
       provider: { only: entry.hosting.usProviders, allow_fallbacks: false, data_collection: 'deny' },

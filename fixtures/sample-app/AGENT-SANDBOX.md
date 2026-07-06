@@ -4,7 +4,7 @@ Use these in the **Extension Development Host** with `fixtures/sample-app` open 
 
 ## Setup
 
-1. Open Fortress Code sidebar (activity bar icon).
+1. Open FortressChat sidebar (activity bar icon).
 2. Pick any available model (local or OpenRouter). If the daemon is missing, you will see an error banner — some scenarios still work for UI/rules testing.
 3. Optional: **Settings (gear) → Index workspace** before `@codebase` tests.
 
@@ -100,7 +100,7 @@ Use these in the **Extension Development Host** with `fixtures/sample-app` open 
 1. Run **Run Extension (watch + Fixture)**.
 2. Change a visible string in `packages/extension/media/chat.html`.
 3. Save.
-4. **Expected:** Chat UI updates within ~1s. If not, run **Fortress Code: Reload Chat Webview**.
+4. **Expected:** Chat UI updates within ~1s. If not, run **FortressChat: Reload Chat Webview**.
 
 ---
 

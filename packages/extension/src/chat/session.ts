@@ -1,7 +1,7 @@
 import type { Memento } from 'vscode';
-import { validateHistory, type ChatMessage } from '@fortress-code/shared';
+import { validateHistory, type ChatMessage } from '@fortress-chat/shared';
 
-const KEY = 'fortressCode.session';
+const KEY = 'fortressChat.session';
 
 export class Session {
   messages: ChatMessage[] = [];

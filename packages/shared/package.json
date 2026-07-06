@@ -1,5 +1,5 @@
 {
-  "name": "@fortress-code/shared",
+  "name": "@fortress-chat/shared",
   "version": "0.1.0",
   "type": "commonjs",
   "main": "dist/index.js",

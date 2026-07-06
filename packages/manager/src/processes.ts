@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { ForeignProcess } from '@fortress-code/shared';
+import type { ForeignProcess } from '@fortress-chat/shared';
 
 const execFileP = promisify(execFile);
 const PATTERN = /(llama-server\s+-m|llama serve\s+-m|llama-server\s+--|llama serve\s+--|llama-server\s+-hf|llama serve\s+-hf|ollama runner)/;

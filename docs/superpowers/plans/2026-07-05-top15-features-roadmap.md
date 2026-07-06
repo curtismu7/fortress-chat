@@ -1,4 +1,4 @@
-# Top-15 Chat-Harness Features — Fortress Code Roadmap
+# Top-15 Chat-Harness Features — FortressChat Roadmap
 
 **Date:** 2026-07-05
 **Source:** 3-agent survey of ~20 chat harnesses (2025-2026 state):

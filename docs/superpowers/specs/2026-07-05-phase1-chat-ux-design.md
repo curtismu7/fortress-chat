@@ -105,8 +105,8 @@ All handlers follow the existing banner-on-error pattern.
 
 ## Storage shapes (prefs.ts, one Memento key each)
 
-- `fortressCode.prompts`: `SavedPrompt[]`
-- `fortressCode.params`: `Params` (`{ temperature?, top_p?, max_tokens? }`)
+- `fortressChat.prompts`: `SavedPrompt[]`
+- `fortressChat.params`: `Params` (`{ temperature?, top_p?, max_tokens? }`)
 
 ## Error handling
 

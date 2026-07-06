@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@fortress-code/shared';
+import type { ChatMessage } from '@fortress-chat/shared';
 import type { ResolvedTarget } from './target';
 
 export class WatchdogError extends Error {}

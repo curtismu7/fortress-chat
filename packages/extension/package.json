@@ -1,12 +1,12 @@
 {
-  "name": "fortress-code",
-  "displayName": "Fortress Code",
+  "name": "fortress-chat",
+  "displayName": "FortressChat",
   "description": "Local US-model chat + agent for VS Code. Memory-safe llama.cpp management built in.",
   "version": "0.1.7",
   "publisher": "coachcurtis",
   "repository": {
     "type": "git",
-    "url": "https://github.com/curtismu7/fortress-code"
+    "url": "https://github.com/curtismu7/fortress-chat"
   },
   "license": "MIT",
   "engines": {
@@ -20,9 +20,9 @@
   "activationEvents": [],
   "contributes": {
     "configuration": {
-      "title": "Fortress Code",
+      "title": "FortressChat",
       "properties": {
-        "fortressCode.mcpServers": {
+        "fortressChat.mcpServers": {
           "type": "array",
           "default": [],
           "description": "MCP stdio servers for agent mode. Tools are available when Agent mode is on.",
@@ -41,7 +41,7 @@
             "required": ["name", "command"]
           }
         },
-        "fortressCode.skillDirectories": {
+        "fortressChat.skillDirectories": {
           "type": "array",
           "default": [
             "~/.cursor/skills-cursor",
@@ -57,79 +57,79 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "fortress-code",
-          "title": "Fortress Code",
+          "id": "fortress-chat",
+          "title": "FortressChat",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "fortress-code": [
+      "fortress-chat": [
         {
           "type": "webview",
-          "id": "fortressCode.chat",
+          "id": "fortressChat.chat",
           "name": "Chat"
         }
       ]
     },
     "commands": [
       {
-        "command": "fortress-code.openChatInEditor",
-        "title": "Fortress Code: Open Chat in Editor Tab"
+        "command": "fortress-chat.openChatInEditor",
+        "title": "FortressChat: Open Chat in Editor Tab"
       },
       {
-        "command": "fortress-code.openChat",
-        "title": "Fortress Code: Open Chat"
+        "command": "fortress-chat.openChat",
+        "title": "FortressChat: Open Chat"
       },
       {
-        "command": "fortress-code.reloadWebview",
-        "title": "Fortress Code: Reload Chat Webview"
+        "command": "fortress-chat.reloadWebview",
+        "title": "FortressChat: Reload Chat Webview"
       },
       {
-        "command": "fortress-code.reloadMcp",
-        "title": "Fortress Code: Reload MCP Servers"
+        "command": "fortress-chat.reloadMcp",
+        "title": "FortressChat: Reload MCP Servers"
       },
       {
-        "command": "fortress-code.reloadSkills",
-        "title": "Fortress Code: Reload Skills"
+        "command": "fortress-chat.reloadSkills",
+        "title": "FortressChat: Reload Skills"
       },
       {
-        "command": "fortress-code.toggleDevMode",
-        "title": "Fortress Code: Toggle Developer Mode"
+        "command": "fortress-chat.toggleDevMode",
+        "title": "FortressChat: Toggle Developer Mode"
       },
       {
-        "command": "fortress-code.explainSelection",
-        "title": "Fortress Code: Explain Selection"
+        "command": "fortress-chat.explainSelection",
+        "title": "FortressChat: Explain Selection"
       },
       {
-        "command": "fortress-code.fixSelection",
-        "title": "Fortress Code: Fix Selection"
+        "command": "fortress-chat.fixSelection",
+        "title": "FortressChat: Fix Selection"
       },
       {
-        "command": "fortress-code.testSelection",
-        "title": "Fortress Code: Add Tests Selection"
+        "command": "fortress-chat.testSelection",
+        "title": "FortressChat: Add Tests Selection"
       },
       {
-        "command": "fortress-code.refactorSelection",
-        "title": "Fortress Code: Refactor Selection"
+        "command": "fortress-chat.refactorSelection",
+        "title": "FortressChat: Refactor Selection"
       },
       {
-        "command": "fortress-code.docSelection",
-        "title": "Fortress Code: Document Selection"
+        "command": "fortress-chat.docSelection",
+        "title": "FortressChat: Document Selection"
       },
       {
-        "command": "fortress-code.inlineEdit",
-        "title": "Fortress Code: Inline Edit"
+        "command": "fortress-chat.inlineEdit",
+        "title": "FortressChat: Inline Edit"
       }
     ],
     "keybindings": [
       {
-        "command": "fortress-code.toggleDevMode",
+        "command": "fortress-chat.toggleDevMode",
         "key": "ctrl+alt+m",
         "mac": "ctrl+alt+m"
       },
       {
-        "command": "fortress-code.inlineEdit",
+        "command": "fortress-chat.inlineEdit",
         "key": "ctrl+shift+k",
         "mac": "cmd+shift+k",
         "when": "editorTextFocus"
@@ -137,37 +137,37 @@
     ],
     "submenus": [
       {
-        "id": "fortress-code.selection",
-        "label": "Fortress Code"
+        "id": "fortress-chat.selection",
+        "label": "FortressChat"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "submenu": "fortress-code.selection",
+          "submenu": "fortress-chat.selection",
           "group": "1_modification",
           "when": "editorHasSelection"
         }
       ],
-      "fortress-code.selection": [
+      "fortress-chat.selection": [
         {
-          "command": "fortress-code.explainSelection",
+          "command": "fortress-chat.explainSelection",
           "group": "1@1"
         },
         {
-          "command": "fortress-code.fixSelection",
+          "command": "fortress-chat.fixSelection",
           "group": "1@2"
         },
         {
-          "command": "fortress-code.testSelection",
+          "command": "fortress-chat.testSelection",
           "group": "1@3"
         },
         {
-          "command": "fortress-code.refactorSelection",
+          "command": "fortress-chat.refactorSelection",
           "group": "1@4"
         },
         {
-          "command": "fortress-code.docSelection",
+          "command": "fortress-chat.docSelection",
           "group": "1@5"
         }
       ]
@@ -178,11 +178,11 @@
     "watch": "node esbuild.mjs --watch",
     "test": "vitest run",
     "test:e2e": "npm run build && node out/test/e2e/runTest.js",
-    "package": "npx --yes @vscode/vsce package --no-dependencies -o ../../fortress-code.vsix",
+    "package": "npx --yes @vscode/vsce package --no-dependencies -o ../../fortress-chat.vsix",
     "typecheck": "tsc -p tsconfig.typecheck.json"
   },
   "dependencies": {
-    "@fortress-code/shared": "0.1.0"
+    "@fortress-chat/shared": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

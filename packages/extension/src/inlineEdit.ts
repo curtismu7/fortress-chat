@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@fortress-code/shared';
+import type { ChatMessage } from '@fortress-chat/shared';
 
 const EDIT_SYSTEM = 'You are a precise code editor. Rewrite the user\'s selected code according to their instruction. Output ONLY the new code — no explanations, no markdown fences.';
 

@@ -1,4 +1,4 @@
-# Fortress Code
+# FortressChat
 
 Local + US-governed AI chat and coding agent for VS Code. Run models fully on
 your machine via llama.cpp, or use approved US models through OpenRouter — with
@@ -22,7 +22,7 @@ is blocked with a plain-language reason. See
 
 ## Install
 
-Download `fortress-code.vsix` from the latest Release → VS Code Extensions →
+Download `fortress-chat.vsix` from the latest Release → VS Code Extensions →
 Install from VSIX. Requirements: Apple Silicon Mac, macOS 13+, VS Code 1.90+.
 
 ## Development
@@ -51,6 +51,6 @@ npm run dev       # esbuild watch (alias for npm run watch)
 | **Run Extension (watch + Fixture)** | Fixture + esbuild watch; reload window after TS changes |
 | **Extension Tests (E2E smoke)** | Automated webview wiring tests |
 
-**Hot reload:** edits to `packages/extension/media/*` auto-reload the chat webview in dev. TypeScript changes need esbuild watch + **Developer: Reload Window**. Command: **Fortress Code: Reload Chat Webview**.
+**Hot reload:** edits to `packages/extension/media/*` auto-reload the chat webview in dev. TypeScript changes need esbuild watch + **Developer: Reload Window**. Command: **FortressChat: Reload Chat Webview**.
 
 The fixture includes a bug in `src/greeter.js`, rules in `.fortress/rules.md`, and docs for `@docs` — see `fixtures/sample-app/AGENT-SANDBOX.md` for scenarios.

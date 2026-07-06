@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { loadPolicy, localEntries, explainBlock, type PolicyEntry, type StatusResponse } from '@fortress-code/shared';
+import { loadPolicy, localEntries, explainBlock, type PolicyEntry, type StatusResponse } from '@fortress-chat/shared';
 import { DaemonClient } from '../daemon';
 import { RagService } from '../rag/service';
 import { Debouncer } from '../rag/watcher';
@@ -31,7 +31,7 @@ import { AgentCheckpoint } from '../agentCheckpoint';
 import { mentionCandidates } from '../mentionFiles';
 import { discoverSkills, type Skill } from '../skills';
 
-const SYSTEM_PROMPT = 'You are Fortress Code, a helpful local coding assistant.';
+const SYSTEM_PROMPT = 'You are FortressChat, a helpful local coding assistant.';
 
 const MODE_PROMPTS: Record<string, string> = {
   plan: 'You are in plan mode. Outline a clear step-by-step plan before editing files. Discuss tradeoffs and wait for confirmation before applying changes unless the user asked you to implement immediately.',
@@ -72,7 +72,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   constructor(private context: vscode.ExtensionContext, private connect: () => Promise<DaemonClient>) {
     this.store = SessionStore.load(context.workspaceState);
-    this.devMode = context.globalState.get<boolean>('fortressCode.devMode', false);
+    // One-time migration from pre-rename 'fortressCode.devMode' key.
+    if (context.globalState.get<boolean>('fortressChat.devMode', false) === false) {
+      const legacy = context.globalState.get<boolean>('fortressCode.devMode', false);
+      if (legacy) void context.globalState.update('fortressChat.devMode', true);
+      void context.globalState.update('fortressCode.devMode', undefined);
+    }
+    this.devMode = context.globalState.get<boolean>('fortressChat.devMode', false);
     this.prefs = new Prefs(this.context.globalState);
     this.startMediaWatcher();
   }
@@ -125,8 +131,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   async openInEditor(): Promise<void> {
     const media = vscode.Uri.joinPath(this.context.extensionUri, 'media');
     const panel = vscode.window.createWebviewPanel(
-      'fortressCode.chatPanel',
-      'Fortress Code',
+      'fortressChat.chatPanel',
+      'FortressChat',
       vscode.ViewColumn.Beside,
       { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [media] },
     );
@@ -190,7 +196,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private post(msg: unknown): void {
     this.deliver(msg);
   }
-  private banner(message: string): void { this.post({ type: 'error', message: (message && message.trim()) ? message : 'Fortress Code error (no details)' }); }
+  private banner(message: string): void { this.post({ type: 'error', message: (message && message.trim()) ? message : 'FortressChat error (no details)' }); }
 
   private async ensureClient(): Promise<DaemonClient> {
     if (!this.client) this.client = await this.connect();
@@ -241,7 +247,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private skillDirectories(): string[] {
-    const raw = vscode.workspace.getConfiguration('fortressCode').get<string[]>('skillDirectories');
+    const raw = vscode.workspace.getConfiguration('fortressChat').get<string[]>('skillDirectories');
     return Array.isArray(raw) ? raw.filter((d) => typeof d === 'string') : [];
   }
 
@@ -316,7 +322,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async initMcp(): Promise<void> {
-    const cfgs = parseMcpConfigs(vscode.workspace.getConfiguration('fortressCode').get('mcpServers'));
+    const cfgs = parseMcpConfigs(vscode.workspace.getConfiguration('fortressChat').get('mcpServers'));
     for (const c of this.mcpClients) c.dispose();
     this.mcpClients = cfgs.map((cfg) => new McpClient(cfg));
     this.mcpTools = [];
@@ -339,8 +345,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         vscode.window.onDidChangeActiveTextEditor(refresh),
         vscode.window.onDidChangeTextEditorSelection(refresh),
         vscode.workspace.onDidChangeConfiguration((e) => {
-          if (e.affectsConfiguration('fortressCode.mcpServers')) void this.initMcp();
-          if (e.affectsConfiguration('fortressCode.skillDirectories')) this.refreshSkills();
+          if (e.affectsConfiguration('fortressChat.mcpServers')) void this.initMcp();
+          if (e.affectsConfiguration('fortressChat.skillDirectories')) this.refreshSkills();
         }),
       );
       this.refreshSkills();
@@ -350,7 +356,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       await this.postChips();
     } catch (e) {
       this.initialized = false;
-      this.banner(`Could not start the Fortress Code daemon: ${e}`);
+      this.banner(`Could not start the FortressChat daemon: ${e}`);
     }
   }
 
@@ -594,7 +600,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           return;
         }
         case 'openMcpSettings':
-          await vscode.commands.executeCommand('workbench.action.openSettings', 'fortressCode.mcpServers');
+          await vscode.commands.executeCommand('workbench.action.openSettings', 'fortressChat.mcpServers');
           return;
         case 'reloadMcp':
           await this.initMcp();
@@ -603,7 +609,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.refreshSkills();
           return;
         case 'openSkillSettings':
-          await vscode.commands.executeCommand('workbench.action.openSettings', 'fortressCode.skillDirectories');
+          await vscode.commands.executeCommand('workbench.action.openSettings', 'fortressChat.skillDirectories');
           return;
         case 'selectModel': return await this.selectModel(String(m.id));
         case 'addModel': return this.handleAddModel(String(m.slug));
@@ -728,7 +734,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           const rel = defaultRulesRel(root);
           const abs = join(root, rel);
           try { readFileSync(abs); } catch {
-            await vscode.workspace.fs.writeFile(vscode.Uri.file(abs), Buffer.from('# Project rules\n\nAdd instructions Fortress Code should follow in this repo.\n', 'utf8'));
+            await vscode.workspace.fs.writeFile(vscode.Uri.file(abs), Buffer.from('# Project rules\n\nAdd instructions FortressChat should follow in this repo.\n', 'utf8'));
           }
           const doc = await vscode.workspace.openTextDocument(abs);
           await vscode.window.showTextDocument(doc);

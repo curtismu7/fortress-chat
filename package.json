@@ -1,14 +1,14 @@
 {
-  "name": "fortress-code",
+    "name": "fortress-chat",
   "private": true,
   "workspaces": ["packages/*"],
   "engines": { "node": ">=20" },
   "scripts": {
-    "build": "npm run build -w @fortress-code/shared && npm run build -w @fortress-code/manager && npm run build -w fortress-code",
-    "watch": "npm run build -w @fortress-code/shared && npm run watch -w fortress-code",
+    "build": "npm run build -w @fortress-chat/shared && npm run build -w @fortress-chat/manager && npm run build -w fortress-chat",
+    "watch": "npm run build -w @fortress-chat/shared && npm run watch -w fortress-chat",
     "dev": "npm run watch",
     "test": "npm run test --workspaces --if-present",
-    "test:e2e": "npm run test:e2e -w fortress-code",
+    "test:e2e": "npm run test:e2e -w fortress-chat",
     "lint": "npm run lint --workspaces --if-present"
   }
 }

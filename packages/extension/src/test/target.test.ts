@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveTarget } from '../providers/target';
-import { PolicyViolationError, type PolicyEntry } from '@fortress-code/shared';
+import { PolicyViolationError, type PolicyEntry } from '@fortress-chat/shared';
 
 const localEntry: PolicyEntry = {
   id: 'gpt-oss-20b', displayName: 'gpt-oss', provider: 'local', agentCapable: true,

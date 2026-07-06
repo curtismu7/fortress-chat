@@ -10,10 +10,10 @@
 
 ## Global Constraints
 
-- Work from `/Users/cmuir/Development/curtis-llama/fortress-code`, branch `main`. Stage files explicitly (never `git add -A`). Commit trailer: `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
+- Work from `/Users/cmuir/Development/curtis-llama/fortress-chat`, branch `main`. Stage files explicitly (never `git add -A`). Commit trailer: `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
 - The bypass lives ONLY in `resolveDevTarget`; it must NOT import or call `assertAllowed`. The guarded `resolveTarget` in `providers/target.ts` must remain unchanged and still call `assertAllowed` first.
 - Fireworks transport: `https://api.fireworks.ai/inference/v1/chat/completions`, header `authorization: Bearer <key>`, `model: <slug>`, no `provider` pin.
-- Fireworks key stored ONLY in `context.secrets` (id `fortressCode.fireworksKey`); never on disk, never posted to the webview (only a boolean `fireworksKeySet`), never committed.
+- Fireworks key stored ONLY in `context.secrets` (id `fortressChat.fireworksKey`); never on disk, never posted to the webview (only a boolean `fireworksKeySet`), never committed.
 - Dev Mode is OFF by default; first enable requires a modal confirm; a persistent "⚠ Developer mode — US-only governance is BYPASSED" banner shows whenever on.
 - Verified preset slug: GLM-5.2 = `accounts/fireworks/models/glm-5p2`.
 - Node 20+ builtins + `fetch` + `vscode` only. TDD for the logic task; manual verification for the webview task.
@@ -46,7 +46,7 @@ packages/extension/
 - Produces:
   - `function resolveDevTarget(slug: string, key: string): ResolvedTarget`
   - `const DEV_PRESETS: { label: string; slug: string }[]`
-  - `const FIREWORKS_KEY_ID = 'fortressCode.fireworksKey'`, `getFireworksKey(secrets)`, `setFireworksKey(secrets, key)`
+  - `const FIREWORKS_KEY_ID = 'fortressChat.fireworksKey'`, `getFireworksKey(secrets)`, `setFireworksKey(secrets, key)`
 
 - [ ] **Step 1: Write the failing test** (`packages/extension/src/test/dev.test.ts`)
 
@@ -87,7 +87,7 @@ describe('DEV_PRESETS', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: FAIL — cannot resolve `../providers/dev`.
 
 - [ ] **Step 3: Implement the presets** (`packages/extension/src/devPresets.ts`)
@@ -128,7 +128,7 @@ export function resolveDevTarget(slug: string, key: string): ResolvedTarget {
 Append to the existing file (which already exports the OpenRouter helpers):
 
 ```ts
-export const FIREWORKS_KEY_ID = 'fortressCode.fireworksKey';
+export const FIREWORKS_KEY_ID = 'fortressChat.fireworksKey';
 
 export function getFireworksKey(secrets: SecretStorage): Promise<string | undefined> {
   return Promise.resolve(secrets.get(FIREWORKS_KEY_ID));
@@ -142,7 +142,7 @@ export async function setFireworksKey(secrets: SecretStorage, key: string): Prom
 
 - [ ] **Step 6: Run to verify it passes**
 
-Run: `npm run build -w @fortress-code/shared && npm test -w fortress-code`
+Run: `npm run build -w @fortress-chat/shared && npm test -w fortress-chat`
 Expected: dev tests pass; full extension suite still green.
 
 - [ ] **Step 7: Commit**
@@ -163,23 +163,23 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `resolveDevTarget` (Task 1), `DEV_PRESETS` (Task 1), `getFireworksKey`/`setFireworksKey` (Task 1), existing `streamChat`/`runAgentTurn`/`Session`.
-- Produces: command `fortress-code.toggleDevMode`; webview messages `devMode`, `devPresets`, `fireworksKeySet` (provider→webview) and `toggleDevModeAck`, `setFireworksKey`, `selectDevModel` (webview→provider).
+- Produces: command `fortress-chat.toggleDevMode`; webview messages `devMode`, `devPresets`, `fireworksKeySet` (provider→webview) and `toggleDevModeAck`, `setFireworksKey`, `selectDevModel` (webview→provider).
 
 This is a UI task: verify by build + manual smoke test (the bypass logic is unit-tested in Task 1).
 
 - [ ] **Step 1: Contribute the command + keybinding** (`packages/extension/package.json`)
 
-In `contributes.commands`, add alongside the existing `fortress-code.openChat`:
+In `contributes.commands`, add alongside the existing `fortress-chat.openChat`:
 
 ```json
-{ "command": "fortress-code.toggleDevMode", "title": "Fortress Code: Toggle Developer Mode" }
+{ "command": "fortress-chat.toggleDevMode", "title": "FortressChat: Toggle Developer Mode" }
 ```
 
 Add a top-level `contributes.keybindings` (sibling of `commands`/`views`):
 
 ```json
 "keybindings": [
-  { "command": "fortress-code.toggleDevMode", "key": "ctrl+alt+m", "mac": "ctrl+alt+m" }
+  { "command": "fortress-chat.toggleDevMode", "key": "ctrl+alt+m", "mac": "ctrl+alt+m" }
 ]
 ```
 
@@ -189,8 +189,8 @@ In `activate`, after the existing `registerWebviewViewProvider`/`openChat` regis
 
 ```ts
 context.subscriptions.push(
-  vscode.commands.registerCommand('fortress-code.toggleDevMode', async () => {
-    const on = !context.globalState.get<boolean>('fortressCode.devMode', false);
+  vscode.commands.registerCommand('fortress-chat.toggleDevMode', async () => {
+    const on = !context.globalState.get<boolean>('fortressChat.devMode', false);
     if (on) {
       const ok = await vscode.window.showWarningMessage(
         'Developer Mode bypasses the US-only governance and lets you use any Fireworks model (including non-US). Continue?',
@@ -198,9 +198,9 @@ context.subscriptions.push(
       );
       if (ok !== 'Enable') return;
     }
-    await context.globalState.update('fortressCode.devMode', on);
+    await context.globalState.update('fortressChat.devMode', on);
     provider.setDevMode(on);
-    void vscode.window.showInformationMessage(`Fortress Code Developer Mode ${on ? 'ON — governance BYPASSED' : 'off'}`);
+    void vscode.window.showInformationMessage(`FortressChat Developer Mode ${on ? 'ON — governance BYPASSED' : 'off'}`);
   }),
 );
 ```
@@ -229,7 +229,7 @@ private devModel: string | null = null;
 Initialize `devMode` from globalState in the constructor (after `this.session = ...`):
 
 ```ts
-this.devMode = context.globalState.get<boolean>('fortressCode.devMode', false);
+this.devMode = context.globalState.get<boolean>('fortressChat.devMode', false);
 ```
 
 Add a public method and post dev state from `sendInitial`/`init`. Add this method:
@@ -334,7 +334,7 @@ $('dev-use').onclick = () => {
 
 - [ ] **Step 7: Build + manual smoke test**
 
-Run: `npm run build -w @fortress-code/shared && npm run build -w fortress-code` (both bundles + tsc clean), then `npm test -w fortress-code` (existing suite green).
+Run: `npm run build -w @fortress-chat/shared && npm run build -w fortress-chat` (both bundles + tsc clean), then `npm test -w fortress-chat` (existing suite green).
 Manual (Extension Dev Host / installed): press `Ctrl+Alt+M` → confirm dialog → the Dev section + red banner appear → save the Fireworks key → pick GLM-5.2 → send → reply streams from Fireworks and the header shows "⚠ DEV". Press `Ctrl+Alt+M` again → Dev section hidden, governed gallery restored.
 
 - [ ] **Step 8: Commit**

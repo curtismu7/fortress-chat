@@ -1,11 +1,20 @@
 import { spawn } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { CatalogModel, StatusResponse, StartRejection } from '@fortress-code/shared';
+import type { CatalogModel, StatusResponse, StartRejection } from '@fortress-chat/shared';
 
 function dataDir(): string {
-  return process.env.FC_DATA_DIR ?? join(homedir(), 'Library', 'Application Support', 'fortress-code');
+  const dir = process.env.FC_DATA_DIR ?? join(homedir(), 'Library', 'Application Support', 'fortress-chat');
+  if (!process.env.FC_DATA_DIR) {
+    // One-time migration from the old 'fortress-code' data dir to 'fortress-chat'.
+    const legacy = join(homedir(), 'Library', 'Application Support', 'fortress-code');
+    if (existsSync(legacy) && !existsSync(dir)) {
+      try { renameSync(legacy, dir); } catch { /* leave legacy in place */ }
+    }
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  }
+  return dir;
 }
 
 interface DaemonInfo { pid: number; port: number; token: string }
@@ -81,5 +90,5 @@ export async function ensureDaemon(managerEntryPath: string): Promise<DaemonClie
     if (info && (await alive(info))) return new DaemonClient(info.port, info.token);
     await new Promise((r) => setTimeout(r, 200));
   }
-  throw new Error('daemon did not start within 10s (see daemon.log in the Fortress Code data folder)');
+  throw new Error('daemon did not start within 10s (see daemon.log in the FortressChat data folder)');
 }

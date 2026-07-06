@@ -1,4 +1,4 @@
-# Fortress Code — Inline Edit (Cmd+Shift+K) design
+# FortressChat — Inline Edit (Cmd+Shift+K) design
 
 **Status:** Approved (brainstorming session with Curtis, 2026-07-04)
 **Builds on:** Phase A (selection context + `editFileWithApproval` diff flow) and the provider/model routing.
@@ -11,7 +11,7 @@ Edit code in place: select code, press **Cmd+Shift+K**, type an instruction, and
 
 | Decision | Choice |
 |---|---|
-| Keybinding | `cmd+shift+k` (mac) / `ctrl+shift+k`; palette "Fortress Code: Inline Edit"; `when: editorTextFocus`. |
+| Keybinding | `cmd+shift+k` (mac) / `ctrl+shift+k`; palette "FortressChat: Inline Edit"; `when: editorTextFocus`. |
 | Input UX | Native `showInputBox` for the instruction. |
 | Result review | Reuse `editFileWithApproval` (whole-file diff: before + newCode + after). |
 | Model | The model already selected in the panel — governed or Fireworks-dev — via the same routing as chat. |
@@ -21,7 +21,7 @@ Edit code in place: select code, press **Cmd+Shift+K**, type an instruction, and
 
 ### 3.1 `inlineEdit.ts` (pure, tested)
 ```ts
-import type { ChatMessage } from '@fortress-code/shared';
+import type { ChatMessage } from '@fortress-chat/shared';
 function buildInlineEditMessages(code: string, instruction: string, language: string): ChatMessage[]
 // [ {role:'system', content: EDIT_SYSTEM}, {role:'user', content: `Instruction: ${instruction}\n\nCode (${language}):\n${code}`} ]
 function stripCodeFences(text: string): string
@@ -34,16 +34,16 @@ function stripCodeFences(text: string): string
 - `async inlineEdit(code, instruction, language, signal): Promise<string>` — `currentTarget()`, then `streamChat(target, buildInlineEditMessages(...), () => {}, signal)` (no tools, no reasoning UI), return `stripCodeFences(result.content)`.
 
 ### 3.3 `extension.ts` — the command
-`registerCommand('fortress-code.inlineEdit', …)`:
+`registerCommand('fortress-chat.inlineEdit', …)`:
 1. `const ed = window.activeTextEditor; if (!ed) return`.
 2. `const range = ed.selection.isEmpty ? ed.document.lineAt(ed.selection.active.line).range : ed.selection`.
 3. `const instruction = await window.showInputBox({ prompt: 'Inline edit', placeHolder: 'e.g. add error handling' }); if (!instruction) return`.
-4. `window.withProgress({ location: Notification, title: 'Fortress Code editing…' }, async () => { const newCode = await provider.inlineEdit(ed.document.getText(range), instruction, ed.document.languageId, token); … })` (a `CancellationTokenSource` bridged to an `AbortSignal`).
+4. `window.withProgress({ location: Notification, title: 'FortressChat editing…' }, async () => { const newCode = await provider.inlineEdit(ed.document.getText(range), instruction, ed.document.languageId, token); … })` (a `CancellationTokenSource` bridged to an `AbortSignal`).
 5. Build `next` = full document text with `range` replaced by `newCode`; `rel = asRelativePath(fileName)`; `await editFileWithApproval(ed.document.fileName, next, rel)`.
 6. Errors → `window.showErrorMessage`.
 
 ### 3.4 `package.json`
-Command `fortress-code.inlineEdit` (title "Fortress Code: Inline Edit") + keybinding `{ key: 'ctrl+shift+k', mac: 'cmd+shift+k', when: 'editorTextFocus' }`.
+Command `fortress-chat.inlineEdit` (title "FortressChat: Inline Edit") + keybinding `{ key: 'ctrl+shift+k', mac: 'cmd+shift+k', when: 'editorTextFocus' }`.
 
 ## 4. Governance
 

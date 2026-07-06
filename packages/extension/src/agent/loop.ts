@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { ChatMessage, ToolCall } from '@fortress-code/shared';
+import type { ChatMessage, ToolCall } from '@fortress-chat/shared';
 import { TOOL_SCHEMAS, executeTool, type ToolExtras } from './tools';
 import type { Session } from '../chat/session';
 import type { ResolvedTarget } from '../providers/target';

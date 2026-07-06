@@ -6,7 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { createApi } from '../src/httpApi';
 import { Supervisor } from '../src/supervisor';
 import { EmbedSupervisor } from '../src/embedSupervisor';
-import { loadCatalog } from '@fortress-code/shared';
+import { loadCatalog } from '@fortress-chat/shared';
 
 const STUB = join(__dirname, 'fixtures', 'stub-llama-server.mjs');
 let server: ReturnType<typeof createApi>; let base: string;

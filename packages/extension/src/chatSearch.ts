@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@fortress-code/shared';
+import type { ChatMessage } from '@fortress-chat/shared';
 import type { ChatMeta } from './sessionStore';
 
 export function searchChats(query: string, metas: ChatMeta[], messagesById: Record<string, ChatMessage[]>, folder?: string): ChatMeta[] {

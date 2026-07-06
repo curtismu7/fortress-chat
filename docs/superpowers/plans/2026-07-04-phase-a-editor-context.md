@@ -10,8 +10,8 @@
 
 ## Global Constraints
 
-- Work from `/Users/cmuir/Development/curtis-llama/fortress-code`, branch `main`. Stage explicitly. Commit trailer `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
-- No new runtime deps; no daemon or `@fortress-code/shared` change. `context.ts` core logic must be `vscode`-free (unit-testable); the `vscode`-facing collector lives in `ChatViewProvider`.
+- Work from `/Users/cmuir/Development/curtis-llama/fortress-chat`, branch `main`. Stage explicitly. Commit trailer `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
+- No new runtime deps; no daemon or `@fortress-chat/shared` change. `context.ts` core logic must be `vscode`-free (unit-testable); the `vscode`-facing collector lives in `ChatViewProvider`.
 - File-content cap: 30_000 bytes per attached file; truncate and flag `truncated: true`.
 - `@file` mentions and Apply targets are path-confined (reuse `resolveInWorkspace` from `agent/tools.ts`).
 - Lightweight rendering: markdown + monospace code blocks, NO per-token syntax colors. All webview text escaped (no HTML injection).
@@ -96,7 +96,7 @@ describe('buildContextPreamble', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: FAIL — cannot resolve `../context`.
 
 - [ ] **Step 3: Implement** (`packages/extension/src/context.ts`)
@@ -136,7 +136,7 @@ export function buildContextPreamble(ctx: ChatContext): string {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `npm run build -w @fortress-code/shared && npm test -w fortress-code`
+Run: `npm run build -w @fortress-chat/shared && npm test -w fortress-chat`
 Expected: context tests pass; full suite green.
 
 - [ ] **Step 5: Commit**
@@ -263,7 +263,7 @@ if (m.type === 'context') {
 
 - [ ] **Step 5: Build + test + manual smoke**
 
-Run: `npm run build -w fortress-code && npm test -w fortress-code` (green; no new unit tests here).
+Run: `npm run build -w fortress-chat && npm test -w fortress-chat` (green; no new unit tests here).
 Manual: open a file → a `📄 file` chip shows; select text → a `✂ sel` chip shows; `×` removes it; ask "what file am I looking at?" → the model answers correctly.
 
 - [ ] **Step 6: Commit**
@@ -379,7 +379,7 @@ case 'applyCode': {
 
 - [ ] **Step 5: Build + test + manual**
 
-Run: `npm run build -w fortress-code && npm test -w fortress-code` (green).
+Run: `npm run build -w fortress-chat && npm test -w fortress-chat` (green).
 Manual: get a reply with a fenced code block → it renders in a bordered box with Copy/Insert/Apply; Copy copies; Insert inserts at cursor; Apply opens a review diff on the active file.
 
 - [ ] **Step 6: Commit**
@@ -398,33 +398,33 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 **Files:** Modify `packages/extension/package.json`, `packages/extension/src/extension.ts`, `packages/extension/src/chat/ChatViewProvider.ts`, `packages/extension/media/chat.js`
 
 **Interfaces:**
-- Produces: commands `fortress-code.explainSelection|fixSelection|testSelection|refactorSelection|docSelection`; provider method `runSelectionAction(kind)`.
+- Produces: commands `fortress-chat.explainSelection|fixSelection|testSelection|refactorSelection|docSelection`; provider method `runSelectionAction(kind)`.
 
 - [ ] **Step 1: Contribute commands + editor menu** (`package.json`)
 
-Add to `contributes.commands` (each): titles "Fortress Code: Explain / Fix / Add Tests / Refactor / Document Selection", commands `fortress-code.explainSelection` etc. Add:
+Add to `contributes.commands` (each): titles "FortressChat: Explain / Fix / Add Tests / Refactor / Document Selection", commands `fortress-chat.explainSelection` etc. Add:
 ```json
 "menus": {
   "editor/context": [
-    { "submenu": "fortress-code.selection", "group": "1_modification", "when": "editorHasSelection" }
+    { "submenu": "fortress-chat.selection", "group": "1_modification", "when": "editorHasSelection" }
   ],
-  "fortress-code.selection": [
-    { "command": "fortress-code.explainSelection", "group": "1@1" },
-    { "command": "fortress-code.fixSelection", "group": "1@2" },
-    { "command": "fortress-code.testSelection", "group": "1@3" },
-    { "command": "fortress-code.refactorSelection", "group": "1@4" },
-    { "command": "fortress-code.docSelection", "group": "1@5" }
+  "fortress-chat.selection": [
+    { "command": "fortress-chat.explainSelection", "group": "1@1" },
+    { "command": "fortress-chat.fixSelection", "group": "1@2" },
+    { "command": "fortress-chat.testSelection", "group": "1@3" },
+    { "command": "fortress-chat.refactorSelection", "group": "1@4" },
+    { "command": "fortress-chat.docSelection", "group": "1@5" }
   ]
 },
-"submenus": [ { "id": "fortress-code.selection", "label": "Fortress Code" } ]
+"submenus": [ { "id": "fortress-chat.selection", "label": "FortressChat" } ]
 ```
 
 - [ ] **Step 2: Register commands** (`extension.ts`, inside the `context.subscriptions.push(...)`)
 
 ```ts
 ...(['explain', 'fix', 'test', 'refactor', 'doc'].map((k) =>
-  vscode.commands.registerCommand(`fortress-code.${k}Selection`, async () => {
-    await vscode.commands.executeCommand('fortressCode.chat.focus');
+  vscode.commands.registerCommand(`fortress-chat.${k}Selection`, async () => {
+    await vscode.commands.executeCommand('fortressChat.chat.focus');
     provider.runSelectionAction(k);
   }))),
 ```
@@ -463,8 +463,8 @@ $('send').onclick = () => {
 
 - [ ] **Step 5: Build + test + manual**
 
-Run: `npm run build -w fortress-code && npm test -w fortress-code` (green).
-Manual: select code → right-click → Fortress Code → Explain (chat sends an explanation prompt with the selection attached); `/fix` in the input expands and runs.
+Run: `npm run build -w fortress-chat && npm test -w fortress-chat` (green).
+Manual: select code → right-click → FortressChat → Explain (chat sends an explanation prompt with the selection attached); `/fix` in the input expands and runs.
 
 - [ ] **Step 6: Commit**
 

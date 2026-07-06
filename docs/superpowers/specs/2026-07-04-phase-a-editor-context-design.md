@@ -1,4 +1,4 @@
-# Fortress Code — Phase A: See & Apply Code (design)
+# FortressChat — Phase A: See & Apply Code (design)
 
 **Status:** Approved (brainstorming session with Curtis, 2026-07-04)
 **Part of:** the 7-improvement coding-UX roadmap (Phase A of A→B→C→D). Builds on the existing chat webview (`ChatViewProvider` + `media/chat.*`) and agent tools.
@@ -60,7 +60,7 @@ A small framework-free renderer in `chat.js` (`renderMarkdown(text)`): fenced ``
 - `Apply` → `{type:'applyCode', code}` → host runs the agent tools' diff-approval against the active file, replacing the current selection (or whole file if none); user approves/rejects.
 
 ### 3.4 Selection actions & slash commands
-- **Commands** (`extension.ts`): `fortress-code.explainSelection` / `.fixSelection` / `.testSelection` / `.refactorSelection` / `.docSelection`. Each reads the active selection, focuses the chat view, and drives a send with a templated prompt (e.g. Explain → "Explain this code:") plus the selection as context. Contributed to `contributes.menus["editor/context"]` under a "Fortress Code" group, `when: editorHasSelection`.
+- **Commands** (`extension.ts`): `fortress-chat.explainSelection` / `.fixSelection` / `.testSelection` / `.refactorSelection` / `.docSelection`. Each reads the active selection, focuses the chat view, and drives a send with a templated prompt (e.g. Explain → "Explain this code:") plus the selection as context. Contributed to `contributes.menus["editor/context"]` under a "FortressChat" group, `when: editorHasSelection`.
 - **Slash commands** (webview): if the input starts with `/explain|/fix|/test|/refactor|/doc`, expand to the same template against the current selection/active file before sending.
 
 ### 3.5 `handleSend` integration

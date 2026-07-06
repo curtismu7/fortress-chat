@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@fortress-code/shared';
+import type { ChatMessage } from '@fortress-chat/shared';
 
 export function exportMarkdown(title: string, messages: ChatMessage[], now: Date): string {
   const parts: string[] = [`# ${title}`, `_Exported ${now.toISOString().slice(0, 10)}_`];
