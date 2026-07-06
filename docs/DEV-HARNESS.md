@@ -101,6 +101,41 @@ Debug E2E interactively: launch **Extension Tests (E2E smoke)** from Run and Deb
 - **E2E “fixture workspace should be open”** — launch args must include `fixtures/sample-app`; do not run the suite from an empty host.
 - **Watch task never “completes”** — background esbuild watch is intentional; F5 still proceeds once “watching for changes” appears.
 
+## MCP servers (agent mode)
+
+Add stdio MCP servers in VS Code settings (`fortressCode.mcpServers`) or **Settings → MCP servers** in chat:
+
+```json
+"fortressCode.mcpServers": [
+  {
+    "name": "github",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-github"],
+    "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_..." }
+  }
+]
+```
+
+MCP tools are available in **Agent** mode (prefixed as `serverName__toolName`). Use **Reload MCP** after changing settings.
+
+## Skills (SKILL.md)
+
+Fortress Code scans configured directories for `SKILL.md` files (Cursor, Claude, Codex, project `.fortress/skills`):
+
+- **Composer `+` → Skills** — pick a skill for the active chat
+- **Settings → Skills** — picker, reload, directory config (`fortressCode.skillDirectories`)
+
+Selected skills inject their instructions into the system prompt (like personas). Defaults:
+
+```json
+"fortressCode.skillDirectories": [
+  "~/.cursor/skills-cursor",
+  "~/.claude/skills",
+  "~/.codex/skills",
+  ".fortress/skills"
+]
+```
+
 ## Related docs
 
 - `README.md` — install and high-level dev commands

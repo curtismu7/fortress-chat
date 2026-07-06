@@ -29,6 +29,7 @@ import { speakText } from '../voice';
 import { loadProjectRules, defaultRulesRel } from '../projectRules';
 import { AgentCheckpoint } from '../agentCheckpoint';
 import { mentionCandidates } from '../mentionFiles';
+import { discoverSkills, type Skill } from '../skills';
 
 const SYSTEM_PROMPT = 'You are Fortress Code, a helpful local coding assistant.';
 
@@ -63,6 +64,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private ragIndexing = false;
   private lastCheckpoint: AgentCheckpoint | null = null;
   private prefs: Prefs;
+  private skills: Skill[] = [];
   private testPosts: unknown[] = [];
   private mediaWatcherStarted = false;
   private mediaReloadDebouncer: Debouncer | null = null;
@@ -106,6 +108,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       wv.html = this.buildHtml(wv);
       await this.syncWebview(wv);
     }
+  }
+
+  /** Reload MCP server connections and tool schemas. */
+  async reloadMcpServers(): Promise<void> {
+    await this.initMcp();
+  }
+
+  /** Rescan SKILL.md directories. */
+  reloadSkillsList(): void {
+    this.refreshSkills();
   }
 
   /** Open the chat UI in an editor tab (alongside the sidebar panel). */
@@ -212,17 +224,43 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     return new MemoryStore(this.memoryPath()).load();
   }
 
-  /** Build system prompt from persona, memory, project rules, and defaults. */
+  /** Build system prompt from skill, persona, memory, project rules, and defaults. */
   private systemPromptForChat(): string {
     const meta = this.store.metas().find((m) => m.id === this.store.activeId);
     const persona = meta?.personaId ? this.prefs.personas().find((p) => p.id === meta.personaId) : undefined;
+    const skill = meta?.skillId ? this.skills.find((s) => s.id === meta.skillId) : undefined;
     const mem = MemoryStore.preamble(this.memoryData());
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const rules = loadProjectRules(root).text;
-    const base = persona?.systemPrompt?.trim() || SYSTEM_PROMPT;
+    let base = persona?.systemPrompt?.trim() || SYSTEM_PROMPT;
+    if (skill?.body.trim()) base = `${base}\n\n[skill: ${skill.name}]\n${skill.body.trim()}`;
     const modeHint = MODE_PROMPTS[this.chatMode] ?? '';
     const parts = [base, mem, rules, modeHint].filter(Boolean);
     return parts.join('\n\n');
+  }
+
+  private skillDirectories(): string[] {
+    const raw = vscode.workspace.getConfiguration('fortressCode').get<string[]>('skillDirectories');
+    return Array.isArray(raw) ? raw.filter((d) => typeof d === 'string') : [];
+  }
+
+  /** Rescan SKILL.md files from configured directories. */
+  private refreshSkills(): void {
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    this.skills = discoverSkills(this.skillDirectories(), root);
+    this.post({ type: 'skills', skills: this.skills });
+  }
+
+  private startSkillsWatcher(): void {
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!root) return;
+    const pattern = new vscode.RelativePattern(vscode.Uri.file(root), '.fortress/skills/**');
+    const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+    const debouncer = new Debouncer(500, () => this.refreshSkills());
+    watcher.onDidChange((u) => debouncer.add(u.fsPath));
+    watcher.onDidCreate((u) => debouncer.add(u.fsPath));
+    watcher.onDidDelete((u) => debouncer.add(u.fsPath));
+    this.context.subscriptions.push(watcher);
   }
 
   private postMcpStatus(): void {
@@ -236,6 +274,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         name: c.serverName(),
         connected: c.isConnected(),
         tools: c.toolCount(),
+        error: c.error(),
       })),
     };
     if (emit) emit(msg);
@@ -281,7 +320,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.mcpClients = cfgs.map((cfg) => new McpClient(cfg));
     this.mcpTools = [];
     for (const client of this.mcpClients) {
-      try { this.mcpTools.push(...client.openAiSchemas()); await client.connect(); } catch { /* skip broken server */ }
+      try {
+        await client.connect();
+        this.mcpTools.push(...client.openAiSchemas());
+      } catch { /* error stored on client */ }
     }
     this.postMcpStatus();
   }
@@ -295,7 +337,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(refresh),
         vscode.window.onDidChangeTextEditorSelection(refresh),
+        vscode.workspace.onDidChangeConfiguration((e) => {
+          if (e.affectsConfiguration('fortressCode.mcpServers')) void this.initMcp();
+          if (e.affectsConfiguration('fortressCode.skillDirectories')) this.refreshSkills();
+        }),
       );
+      this.refreshSkills();
+      this.startSkillsWatcher();
       await this.initMcp();
       await this.pushFullState();
       await this.postChips();
@@ -311,6 +359,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     emit({ type: 'policy', local: localEntries(), openrouter: loadPolicy().filter((e) => e.provider === 'openrouter') });
     emit({ type: 'prefs', prompts: this.prefs.prompts(), params: this.prefs.params() });
     emit({ type: 'personas', personas: this.prefs.personas() });
+    emit({ type: 'skills', skills: this.skills });
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     emit({ type: 'projectRules', path: loadProjectRules(root).path ?? defaultRulesRel(root) });
     emit({ type: 'memory', data: this.memoryData() });
@@ -523,6 +572,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'openMcpSettings':
           await vscode.commands.executeCommand('workbench.action.openSettings', 'fortressCode.mcpServers');
           return;
+        case 'reloadMcp':
+          await this.initMcp();
+          return;
+        case 'reloadSkills':
+          this.refreshSkills();
+          return;
+        case 'openSkillSettings':
+          await vscode.commands.executeCommand('workbench.action.openSettings', 'fortressCode.skillDirectories');
+          return;
         case 'selectModel': return await this.selectModel(String(m.id));
         case 'addModel': return this.handleAddModel(String(m.slug));
         case 'setOpenRouterKey': await setOpenRouterKey(this.context.secrets, String(m.key)); this.post({ type: 'openRouterKeySet', set: true }); return;
@@ -655,6 +713,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'savePersona': this.prefs.savePersona(m.persona); this.post({ type: 'personas', personas: this.prefs.personas() }); return;
         case 'deletePersona': this.prefs.deletePersona(String(m.id)); this.post({ type: 'personas', personas: this.prefs.personas() }); return;
         case 'setPersona': this.store.setPersona(this.store.activeId, m.id ? String(m.id) : undefined); this.postChats(); return;
+        case 'setSkill': this.store.setSkill(this.store.activeId, m.id ? String(m.id) : undefined); this.postChats(); return;
       }
     } catch (e) {
       this.banner(String(e));

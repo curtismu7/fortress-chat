@@ -133,6 +133,29 @@
       </details>
 
       <details class="settings-section">
+        <summary>Skills</summary>
+        <p class="settings-hint">Loads <code>SKILL.md</code> from configured directories (Cursor, Claude, Codex, <code>.fortress/skills</code>).</p>
+        <label class="settings-row">Active skill
+          <select id="skill-picker"><option value="">None</option></select>
+        </label>
+        <div class="settings-row-inline">
+          <button type="button" id="skills-reload">Reload skills</button>
+          <button type="button" id="skills-settings">Skill directories…</button>
+        </div>
+        <div id="skills-list" class="skills-list"></div>
+      </details>
+
+      <details class="settings-section">
+        <summary>MCP servers</summary>
+        <p class="settings-hint">Stdio MCP servers expose tools in <b>Agent</b> mode. Configure in VS Code settings.</p>
+        <div id="mcp-list" class="mcp-list"></div>
+        <div class="settings-row-inline">
+          <button type="button" id="mcp-reload">Reload MCP</button>
+          <button type="button" id="mcp-settings">MCP settings…</button>
+        </div>
+      </details>
+
+      <details class="settings-section">
         <summary>Personas</summary>
         <div id="personas-list"></div>
         <input id="persona-name" placeholder="Persona name" />
