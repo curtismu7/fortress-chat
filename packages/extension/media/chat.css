@@ -3,7 +3,7 @@
   --fc-surface: var(--vscode-editorWidget-background, #252526);
   --fc-border: var(--vscode-widget-border, rgba(255,255,255,.08));
   --fc-muted: var(--vscode-descriptionForeground, #d0d0d0);
-  --fc-text: #ffffff;
+  --fc-text: var(--vscode-foreground, #ffffff);
   --fc-user-bg: color-mix(in srgb, var(--vscode-focusBorder, #0078d4) 18%, var(--fc-surface));
   --fc-accent: var(--vscode-focusBorder, #c96442);
   --fc-radius: 14px;
@@ -201,9 +201,9 @@ input, textarea, select {
   border-radius: var(--fc-radius);
   padding: 10px 14px;
 }
-.msg.assistant { color: #ffffff; }
-.msg.user .user-bubble { color: #ffffff; }
-#input { color: #ffffff; }
+.msg.assistant { color: var(--fc-text); }
+.msg.user .user-bubble { color: var(--fc-text); }
+#input { color: var(--fc-text); }
 .msg.assistant .assistant-body { padding: 0 2px; }
 
 #steps {
