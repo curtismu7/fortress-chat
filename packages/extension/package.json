@@ -174,7 +174,7 @@
     }
   },
   "scripts": {
-    "build": "node esbuild.mjs && tsc -p tsconfig.json --noEmit",
+    "build": "npm run build -w @fortress-chat/shared && node esbuild.mjs && tsc -p tsconfig.json --noEmit",
     "watch": "node esbuild.mjs --watch",
     "test": "vitest run",
     "test:e2e": "npm run build && node out/test/e2e/runTest.js",
