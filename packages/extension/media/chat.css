@@ -2,7 +2,8 @@
   --fc-bg: var(--vscode-sideBar-background, #1e1e1e);
   --fc-surface: var(--vscode-editorWidget-background, #252526);
   --fc-border: var(--vscode-widget-border, rgba(255,255,255,.08));
-  --fc-muted: var(--vscode-descriptionForeground, #999);
+  --fc-muted: var(--vscode-descriptionForeground, #d0d0d0);
+  --fc-text: #ffffff;
   --fc-user-bg: color-mix(in srgb, var(--vscode-focusBorder, #0078d4) 18%, var(--fc-surface));
   --fc-accent: var(--vscode-focusBorder, #c96442);
   --fc-radius: 14px;
@@ -11,7 +12,7 @@
 
 body.claude-ui {
   font-family: var(--vscode-font-family, system-ui, sans-serif);
-  color: var(--vscode-foreground);
+  color: var(--fc-text);
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -20,6 +21,9 @@ body.claude-ui {
   background: var(--fc-bg);
   line-height: 1.55;
 }
+
+/* Sidebar offsets the main column by its width. Fixed overlays (model-picker, settings-panel, settings-scrim) are full-screen and unaffected. */
+#top-bar, #messages-wrap, #composer, #compare-pane, #artifact-pane, #steps { margin-left: 260px; }
 
 button {
   background: var(--vscode-button-background);
@@ -99,8 +103,7 @@ input, textarea, select {
   text-align: center;
 }
 .empty-state[hidden] { display: none !important; }
-.empty-state p { margin: 0; font-size: 14px; }
-.empty-state button { font-size: 13px; }
+.empty-state p { margin: 0; font-size: 14px; color: var(--fc-muted); }
 
 #model-picker {
   position: fixed;
@@ -198,7 +201,9 @@ input, textarea, select {
   border-radius: var(--fc-radius);
   padding: 10px 14px;
 }
-.msg.assistant { color: inherit; }
+.msg.assistant { color: #ffffff; }
+.msg.user .user-bubble { color: #ffffff; }
+#input { color: #ffffff; }
 .msg.assistant .assistant-body { padding: 0 2px; }
 
 #steps {
@@ -563,3 +568,117 @@ code.inl { background: var(--vscode-textCodeBlock-background, #2a2a2a); padding:
 .dev-active { color: #e88; }
 .settings-block-btn { width: 100%; margin-bottom: 8px; }
 #messages[hidden] { display: none !important; }
+
+/* ─── Sidebar (ChatGPT-style left rail) ─── */
+#sidebar {
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  width: 260px;
+  background: var(--fc-surface);
+  border-right: 1px solid var(--fc-border);
+  display: flex;
+  flex-direction: column;
+  z-index: 30;
+  overflow: hidden;
+}
+.sidebar-head {
+  padding: 14px 16px 10px;
+  flex-shrink: 0;
+}
+.sidebar-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: .01em;
+  color: var(--fc-text);
+}
+.sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 8px;
+  flex-shrink: 0;
+}
+.sidebar-btn {
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fc-text);
+  border: 1px solid var(--fc-border);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.sidebar-btn:hover { background: var(--fc-bg); }
+.sidebar-btn-agent { color: var(--fc-accent); }
+.sidebar-btn-model {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fc-text);
+}
+.sidebar-btn-model[hidden] { display: none !important; }
+#sidebar-model-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-model-chevron { font-size: 10px; color: var(--fc-muted); flex-shrink: 0; }
+.sidebar-search {
+  padding: 4px 12px 8px;
+  flex-shrink: 0;
+}
+.sidebar-search input {
+  width: 100%;
+  font-size: 12.5px;
+  color: var(--fc-text);
+}
+.sidebar-search input::placeholder { color: var(--fc-muted); }
+.chat-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.chat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--fc-text);
+  background: transparent;
+  border: none;
+  text-align: left;
+  min-width: 0;
+}
+.chat-item:hover { background: var(--fc-bg); }
+.chat-item.active { background: color-mix(in srgb, var(--fc-accent) 22%, var(--fc-surface)); }
+.chat-item-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agent-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--fc-accent);
+  background: color-mix(in srgb, var(--fc-accent) 18%, transparent);
+  border-radius: 4px;
+  padding: 1px 5px;
+  text-transform: uppercase;
+}
+.chat-list-empty {
+  padding: 12px 10px;
+  font-size: 12px;
+  color: var(--fc-muted);
+}

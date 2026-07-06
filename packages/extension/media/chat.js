@@ -530,9 +530,21 @@ function renderState(status) {
 
   const m = selectedId ? [...(policy.local || []), ...(policy.openrouter || [])].find((x) => x.id === selectedId) : null;
   const ready = !!m && (m.provider === 'openrouter' ? true : status.state === 'ready');
+  const engineReady = status.binaryInstalled || window.__orKeySet;
   $('composer').hidden = !ready;
   const empty = $('empty-state');
   if (empty) empty.hidden = ready;
+  const emptyText = $('empty-state-text');
+  if (emptyText) {
+    if (!engineReady) emptyText.textContent = 'Set up the local engine to run models on-device.';
+    else if (!m) emptyText.textContent = 'Pick a model from the sidebar to start chatting.';
+    else if (!ready) emptyText.textContent = 'Loading model…';
+    else emptyText.textContent = '';
+  }
+  const sidebarModelBtn = $('sidebar-model-btn');
+  const sidebarModelLabel = $('sidebar-model-label');
+  if (sidebarModelBtn) sidebarModelBtn.hidden = !engineReady;
+  if (sidebarModelLabel) sidebarModelLabel.textContent = m ? m.displayName : 'Choose model';
   const msgs = $('messages');
   if (msgs) msgs.hidden = !selectedId;
   $('send').disabled = !ready;
@@ -586,7 +598,7 @@ window.addEventListener('message', (e) => {
   if (m.type === 'reasoning') appendReasoning(m.text);
   if (m.type === 'reasoningDone') { const b = document.querySelector('.reasoning-live'); if (b) b.open = false; }
   if (m.type === 'usage' && m.usage) { const u = $('usage-last'); if (u) u.textContent = `↑${m.usage.promptTokens} ↓${m.usage.completionTokens} tok`; }
-  if (m.type === 'chats') { window.__lastChats = m; renderChatPicker(m.metas, m.activeId); fillPersonaPicker(); fillSkillPicker(); }
+  if (m.type === 'chats') { window.__lastChats = m; renderChatPicker(m.metas, m.activeId); renderSidebar(m.metas, m.activeId); fillPersonaPicker(); fillSkillPicker(); }
   if (m.type === 'prefs') {
     window.__prefs = { prompts: m.prompts || [], params: m.params || {} };
     fillParams(); renderPrompts(); fillComparePicker();
@@ -636,7 +648,7 @@ window.addEventListener('message', (e) => {
     const el = m.side === 'A' ? $('compare-a') : $('compare-b');
     if (el && m.content) el.textContent = m.content;
   }
-  if (m.type === 'searchResults') { renderChatPicker(m.metas, $('chat-picker') ? $('chat-picker').value : undefined); }
+  if (m.type === 'searchResults') { renderChatPicker(m.metas, $('chat-picker') ? $('chat-picker').value : undefined); renderSidebar(m.metas, window.__lastChats && window.__lastChats.activeId); }
   if (m.type === 'contextWindow') { window.__ctxWindow = m.tokens; updateMeter(); }
   if (m.type === 'queue') renderPromptQueue(m.items || []);
   if (m.type === 'generating') setGenerating(!!m.active);
@@ -803,6 +815,24 @@ function renderChatPicker(metas, activeId) {
   const keep = activeId !== undefined ? activeId : p.value;
   p.innerHTML = (metas || []).map((c) => `<option value="${c.id}">${esc(c.title || 'New chat')}</option>`).join('');
   p.value = keep;
+}
+
+// Render the left-rail chat list. metas may be a search-filtered subset; activeId is the real active chat.
+function renderSidebar(metas, activeId) {
+  const list = $('chat-list');
+  if (!list) return;
+  const items = metas || [];
+  if (!items.length) {
+    list.innerHTML = '<div class="chat-list-empty">No chats</div>';
+    return;
+  }
+  const active = activeId !== undefined ? activeId : (window.__lastChats && window.__lastChats.activeId);
+  list.innerHTML = items.map((c) => {
+    const isActive = c.id === active;
+    const badge = c.agentMode ? '<span class="agent-badge" title="Agent chat">Agent</span>' : '';
+    return `<button type="button" class="chat-item${isActive ? ' active' : ''}" data-id="${esc(c.id)}" title="${esc(c.title || 'New chat')}">`
+      + `<span class="chat-item-title">${esc(c.title || 'New chat')}</span>${badge}</button>`;
+  }).join('');
 }
 
 function fillParams() {
@@ -1056,11 +1086,25 @@ $('cancel').onclick = () => { vscode.postMessage({ type: 'cancel' }); setGenerat
 $('new-chat').onclick = () => { turnReasoning = ''; closeSettings(false); resetInputHistoryBrowse(); vscode.postMessage({ type: 'newChat' }); };
 { const _oec = $('open-editor-chat'); if (_oec) _oec.onclick = () => { closeSettings(false); vscode.postMessage({ type: 'openChatInEditor' }); }; }
 { const _mpb = $('model-picker-btn'); if (_mpb) _mpb.onclick = () => openModelPicker(); }
-{ const _epm = $('empty-pick-model'); if (_epm) _epm.onclick = () => openModelPicker(); }
+{ const _smb = $('sidebar-model-btn'); if (_smb) _smb.onclick = () => openModelPicker(); }
 { const _mpc = $('model-picker-close'); if (_mpc) _mpc.onclick = () => closeModelPicker(); }
 { const _mps = $('model-picker-scrim'); if (_mps) _mps.onclick = () => closeModelPicker(); }
 { const _ri = $('rag-index'); if (_ri) _ri.onclick = () => { $('rag-index').disabled = true; vscode.postMessage({ type: 'indexWorkspace' }); }; }
 $('chat-picker').onchange = (e) => { turnReasoning = ''; vscode.postMessage({ type: 'switchChat', id: e.target.value }); };
+
+// Sidebar: New chat / New agent / search / click-to-switch
+{ const _ncb = $('new-chat-btn'); if (_ncb) _ncb.onclick = () => { turnReasoning = ''; resetInputHistoryBrowse(); vscode.postMessage({ type: 'newChat' }); }; }
+{ const _nab = $('new-agent-btn'); if (_nab) _nab.onclick = () => { turnReasoning = ''; resetInputHistoryBrowse(); vscode.postMessage({ type: 'newChat', agent: true }); }; }
+{ const _ss = $('sidebar-search'); if (_ss) _ss.oninput = () => {
+  const q = _ss.value;
+  if (!q.trim()) { if (window.__lastChats) renderSidebar(window.__lastChats.metas, window.__lastChats.activeId); return; }
+  vscode.postMessage({ type: 'searchChats', query: q, folder: '' });
+}; }
+{ const _cl = $('chat-list'); if (_cl) _cl.onclick = (e) => {
+  const item = e.target.closest('.chat-item'); if (!item) return;
+  const id = item.getAttribute('data-id'); if (!id) return;
+  turnReasoning = ''; vscode.postMessage({ type: 'switchChat', id });
+}; }
 $('input').addEventListener('input', () => {
   if (historyBrowseIdx >= 0) {
     const expected = inputHistory[inputHistory.length - 1 - historyBrowseIdx];

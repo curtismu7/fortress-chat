@@ -293,6 +293,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.post({ type: 'chatMode', mode: this.chatMode, agentOn: this.agentMode, compareId: this.compareModelId, agentCapable });
   }
 
+  /** Restore agent toggle from the active chat's persisted meta (init + switch). */
+  private restoreAgentModeFromActiveChat(): void {
+    const meta = this.store.metas().find((c) => c.id === this.store.activeId);
+    this.agentMode = !!meta?.agentMode;
+    this.chatMode = this.agentMode ? 'agent' : 'ask';
+  }
+
   private toolExtras(checkpoint?: AgentCheckpoint) {
     const memPath = this.memoryPath();
     return {
@@ -379,6 +386,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.postChatsTarget(emit);
     await this.pushStatusTarget(emit);
     this.postAgentUndoTarget(emit);
+    this.restoreAgentModeFromActiveChat();
     this.postChatModeTarget(emit);
     emit({ type: 'queue', items: [...this.promptQueue] });
     emit({ type: 'generating', active: !!this.generating });
@@ -575,8 +583,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           return;
         }
         case 'cancel': this.generating?.abort(); return;
-        case 'newChat': this.generating?.abort(); this.clearPromptQueue(); this.store.newChat(); this.post({ type: 'history', messages: [] }); this.postChats(); return;
-        case 'switchChat': this.generating?.abort(); this.clearPromptQueue(); this.store.switchTo(String(m.id)); this.post({ type: 'history', messages: this.store.active().messages }); this.postChats(); return;
+        case 'newChat': {
+          this.generating?.abort(); this.clearPromptQueue();
+          const agent = !!m.agent;
+          this.store.newChat(agent);
+          this.agentMode = agent; this.chatMode = agent ? 'agent' : 'ask';
+          this.post({ type: 'history', messages: [] });
+          this.postChatMode(); this.postChats();
+          return;
+        }
+        case 'switchChat': {
+          this.generating?.abort(); this.clearPromptQueue();
+          this.store.switchTo(String(m.id));
+          this.restoreAgentModeFromActiveChat();
+          this.post({ type: 'history', messages: this.store.active().messages });
+          this.postChatMode(); this.postChats();
+          return;
+        }
         case 'regenerate': return await this.regenerate();
         case 'editLoad': {
           const msgs = this.store.active().messages;
@@ -584,7 +607,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           if (um && um.role === 'user') { msgs.length = Number(m.index); this.store.save(); this.post({ type: 'history', messages: msgs }); this.post({ type: 'restoreInput', text: um.content }); }
           return;
         }
-        case 'agentToggle': this.agentMode = !!m.on; this.chatMode = this.agentMode ? 'agent' : 'ask'; this.postChatMode(); return;
+        case 'agentToggle': this.agentMode = !!m.on; this.chatMode = this.agentMode ? 'agent' : 'ask'; this.store.setAgentMode(this.store.activeId, this.agentMode); this.postChatMode(); this.postChats(); return;
         case 'setChatMode': {
           const mode = String(m.mode) as ChatMode;
           if (!['ask', 'agent', 'plan', 'debug', 'multitask'].includes(mode)) return;
@@ -595,6 +618,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           }
           this.chatMode = mode;
           this.agentMode = mode === 'agent' || mode === 'plan' || mode === 'debug';
+          this.store.setAgentMode(this.store.activeId, this.agentMode);
           if (mode === 'multitask' && !this.compareModelId) this.post({ type: 'openActionSub', sub: 'multitask' });
           this.postChatMode();
           return;

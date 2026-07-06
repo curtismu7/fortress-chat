@@ -6,6 +6,24 @@
   <link rel="stylesheet" href="chat.css" />
 </head>
 <body class="claude-ui">
+  <aside id="sidebar">
+    <div class="sidebar-head">
+      <span class="sidebar-title">FortressChat</span>
+    </div>
+    <div class="sidebar-actions">
+      <button type="button" id="new-chat-btn" class="sidebar-btn" title="New chat">+ New chat</button>
+      <button type="button" id="new-agent-btn" class="sidebar-btn sidebar-btn-agent" title="New agent chat">+ New agent</button>
+      <button type="button" id="sidebar-model-btn" class="sidebar-btn sidebar-btn-model" title="Choose model" hidden>
+        <span id="sidebar-model-label">Choose model</span>
+        <span class="sidebar-model-chevron">▾</span>
+      </button>
+    </div>
+    <div class="sidebar-search">
+      <input id="sidebar-search" type="text" placeholder="Search chats…" autocomplete="off" />
+    </div>
+    <nav id="chat-list" class="chat-list" aria-label="Chat history"></nav>
+  </aside>
+
   <header id="top-bar">
     <button type="button" id="model-picker-btn" class="model-picker-trigger">
       <span id="active-model">Choose a model</span>
@@ -22,8 +40,7 @@
 
   <main id="messages-wrap">
     <div id="empty-state" class="empty-state">
-      <p>Select a model to start chatting.</p>
-      <button type="button" id="empty-pick-model">Choose model</button>
+      <p id="empty-state-text">Select a model to start chatting.</p>
     </div>
     <main id="messages"></main>
   </main>

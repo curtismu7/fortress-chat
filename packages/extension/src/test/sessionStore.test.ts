@@ -22,6 +22,29 @@ describe('SessionStore', () => {
     s.switchTo(firstId);
     expect(s.active().messages[0].content).toBe('first');
   });
+
+  it('newChat(true) persists agentMode on the new chat and survives reload', () => {
+    const store = mem();
+    const s = SessionStore.load(store);
+    s.newChat(true);
+    expect(s.metas()[0].agentMode).toBe(true);
+    const reloaded = SessionStore.load(store);
+    expect(reloaded.metas()[0].agentMode).toBe(true);
+  });
+
+  it('newChat() without agentMode leaves meta.agentMode undefined', () => {
+    const s = SessionStore.load(mem());
+    s.newChat();
+    expect(s.metas()[0].agentMode).toBeUndefined();
+  });
+
+  it('fork inherits agentMode from the active chat', () => {
+    const s = SessionStore.load(mem());
+    s.newChat(true);
+    s.active().addUser('agent turn'); s.touchTitle();
+    s.fork(0);
+    expect(s.metas()[0].agentMode).toBe(true);
+  });
   it('titles from the first user message', () => {
     const s = SessionStore.load(mem());
     s.active().addUser('explain my code please'); s.touchTitle();
@@ -96,5 +119,24 @@ describe('SessionStore', () => {
     const originalId = store.activeId;
     store.fork(0);
     expect(store.activeId).toBe(originalId);
+  });
+
+  it('newChat with agentMode persists and round-trips', () => {
+    const store = mem();
+    const s = SessionStore.load(store);
+    s.newChat(true);
+    expect(s.metas()[0].agentMode).toBe(true);
+    s.save();
+    const reloaded = SessionStore.load(store);
+    expect(reloaded.metas().find((m) => m.id === s.activeId)?.agentMode).toBe(true);
+  });
+
+  it('setAgentMode toggles per-chat agent flag', () => {
+    const s = SessionStore.load(mem());
+    const id = s.activeId;
+    s.setAgentMode(id, true);
+    expect(s.metas().find((m) => m.id === id)?.agentMode).toBe(true);
+    s.setAgentMode(id, false);
+    expect(s.metas().find((m) => m.id === id)?.agentMode).toBeUndefined();
   });
 });

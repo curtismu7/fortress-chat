@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { validateHistory, type ChatMessage } from '@fortress-chat/shared';
 import { Session } from './chat/session';
 
-export interface ChatMeta { id: string; title: string; folder?: string; personaId?: string; skillId?: string }
+export interface ChatMeta { id: string; title: string; folder?: string; personaId?: string; skillId?: string; agentMode?: boolean }
 interface MementoLike { get(key: string): unknown; update(key: string, value: unknown): Thenable<void> | void }
 const KEY = 'fortressChat.chats';
 const LEGACY = 'fortressChat.session';
@@ -17,16 +17,18 @@ export class SessionStore {
   private folders: Map<string, string>;
   private personaIds: Map<string, string>;
   private skillIds: Map<string, string>;
+  private agentModes: Map<string, boolean>;
   private sessions: Map<string, Session>;
 
   private constructor(
     private state: MementoLike, activeId: string, order: string[],
     titles: Map<string, string>, folders: Map<string, string>, personaIds: Map<string, string>,
-    skillIds: Map<string, string>,
+    skillIds: Map<string, string>, agentModes: Map<string, boolean>,
     sessions: Map<string, Session>,
   ) {
     this.activeId = activeId; this.order = order; this.titles = titles;
-    this.folders = folders; this.personaIds = personaIds; this.skillIds = skillIds; this.sessions = sessions;
+    this.folders = folders; this.personaIds = personaIds; this.skillIds = skillIds;
+    this.agentModes = agentModes; this.sessions = sessions;
   }
 
   metas(): ChatMeta[] {
@@ -36,6 +38,7 @@ export class SessionStore {
       folder: this.folders.get(id),
       personaId: this.personaIds.get(id),
       skillId: this.skillIds.get(id),
+      agentMode: this.agentModes.get(id) || undefined,
     }));
   }
 
@@ -64,6 +67,14 @@ export class SessionStore {
     this.save();
   }
 
+  // Persist agent-mode per chat so switching chats restores it. True sets, false/undefined clears.
+  setAgentMode(chatId: string, on: boolean): void {
+    if (!this.sessions.has(chatId)) return;
+    if (on) this.agentModes.set(chatId, true);
+    else this.agentModes.delete(chatId);
+    this.save();
+  }
+
   active(): Session { return this.sessions.get(this.activeId)!; }
   messagesById(): Record<string, ChatMessage[]> {
     const result: Record<string, ChatMessage[]> = {};
@@ -71,9 +82,10 @@ export class SessionStore {
     return result;
   }
 
-  newChat(): void {
+  newChat(agentMode?: boolean): void {
     const id = randomUUID();
     this.order.unshift(id); this.titles.set(id, 'New chat'); this.sessions.set(id, new Session());
+    if (agentMode) this.agentModes.set(id, true);
     this.activeId = id; this.save();
   }
   switchTo(id: string): void { if (this.sessions.has(id)) { this.activeId = id; this.save(); } }
@@ -96,6 +108,8 @@ export class SessionStore {
     if (persona) this.personaIds.set(id, persona);
     const skill = this.skillIds.get(this.activeId);
     if (skill) this.skillIds.set(id, skill);
+    const agentMode = this.agentModes.get(this.activeId);
+    if (agentMode) this.agentModes.set(id, agentMode);
     this.activeId = id; this.save();
   }
   touchTitle(): void {
@@ -128,6 +142,7 @@ export class SessionStore {
       const folders = new Map(raw.metas.filter((m) => m.folder).map((m) => [m.id, m.folder!] as const));
       const personaIds = new Map(raw.metas.filter((m) => m.personaId).map((m) => [m.id, m.personaId!] as const));
       const skillIds = new Map(raw.metas.filter((m) => m.skillId).map((m) => [m.id, m.skillId!] as const));
+      const agentModes = new Map(raw.metas.filter((m) => m.agentMode).map((m) => [m.id, m.agentMode!] as const));
       const sessions = new Map<string, Session>();
       for (const id of order) {
         const s = new Session();
@@ -135,13 +150,13 @@ export class SessionStore {
         sessions.set(id, s);
       }
       const activeId = sessions.has(raw.activeId) ? raw.activeId : order[0];
-      return new SessionStore(state, activeId, order, titles, folders, personaIds, skillIds, sessions);
+      return new SessionStore(state, activeId, order, titles, folders, personaIds, skillIds, agentModes, sessions);
     }
     const legacy = state.get(LEGACY) ?? state.get(PRE_RENAME_LEGACY);
     const s = new Session();
     try { if (legacy) s.messages = validateHistory(legacy); } catch { s.messages = []; }
     const id = randomUUID();
-    const store = new SessionStore(state, id, [id], new Map([[id, 'New chat']]), new Map(), new Map(), new Map(), new Map([[id, s]]));
+    const store = new SessionStore(state, id, [id], new Map([[id, 'New chat']]), new Map(), new Map(), new Map(), new Map(), new Map([[id, s]]));
     store.touchTitle();
     store.save();
     return store;
