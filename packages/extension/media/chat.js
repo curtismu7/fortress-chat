@@ -149,29 +149,46 @@ function handleActionItem(id) {
 
 function renderActionSub(body, q) {
   if (actionSub === 'skills') {
+    const skills = window.__skills || [];
     const personas = window.__personas || [];
     const prompts = (window.__prefs && window.__prefs.prompts) || [];
+    const metas = (window.__lastChats && window.__lastChats.metas) || [];
+    const activeId = (window.__lastChats && window.__lastChats.activeId) || '';
+    const activeSkill = metas.find((c) => c.id === activeId)?.skillId;
     const items = [
+      ...skills.map((s) => ({
+        id: 'skill:' + s.id,
+        label: s.name,
+        icon: '⚡',
+        hint: s.description || s.source,
+        active: s.id === activeSkill,
+      })),
       ...personas.map((p) => ({ id: 'persona:' + p.id, label: p.name, icon: '◉', hint: 'Persona' })),
       ...prompts.map((p) => ({ id: 'prompt:' + p.id, label: promptLabel(p), icon: '✎', hint: 'Prompt' })),
-      { id: 'skills-settings', label: 'Manage in Settings…', icon: '⚙', hint: '' },
+      { id: 'skill-clear', label: 'Clear active skill', icon: '×', hint: '' },
+      { id: 'skills-reload', label: 'Reload skills', icon: '↻', hint: '' },
+      { id: 'skills-settings', label: 'Skill directories…', icon: '⚙', hint: '' },
     ];
     const filtered = actionFilter(q, items);
     if (!filtered.length) {
       const empty = document.createElement('div');
       empty.className = 'action-empty';
-      empty.textContent = 'No skills yet';
+      empty.textContent = 'No skills found — add SKILL.md files or configure directories';
       body.appendChild(empty);
       return;
     }
     filtered.forEach((item) => {
-      const row = actionRow(item, false, false);
+      const row = actionRow(item, !!item.active, false);
       row.onclick = () => {
-        if (item.id.startsWith('persona:')) vscode.postMessage({ type: 'setPersona', id: item.id.slice(8) });
+        if (item.id.startsWith('skill:')) vscode.postMessage({ type: 'setSkill', id: item.id.slice(6) });
+        else if (item.id === 'skill-clear') vscode.postMessage({ type: 'setSkill', id: null });
+        else if (item.id === 'skills-reload') vscode.postMessage({ type: 'reloadSkills' });
+        else if (item.id === 'skills-settings') vscode.postMessage({ type: 'openSkillSettings' });
+        else if (item.id.startsWith('persona:')) vscode.postMessage({ type: 'setPersona', id: item.id.slice(8) });
         else if (item.id.startsWith('prompt:')) {
           const p = prompts.find((x) => x.id === item.id.slice(7));
           if (p) pickSlashItem(p);
-        } else openSettings(true);
+        }
         closeActionMenu();
       };
       body.appendChild(row);
@@ -183,16 +200,21 @@ function renderActionSub(body, q) {
     if (!servers.length) {
       const hint = document.createElement('div');
       hint.className = 'action-hint';
-      hint.textContent = 'No MCP servers connected. Add them in VS Code settings.';
+      hint.textContent = 'No MCP servers configured. Add fortressCode.mcpServers in VS Code settings.';
       body.appendChild(hint);
     } else {
       servers.forEach((s) => {
-        const item = { label: s.name, icon: s.connected ? '●' : '○', hint: `${s.tools} tool${s.tools === 1 ? '' : 's'}` };
+        const status = s.connected ? '●' : '○';
+        const err = s.error ? ` — ${s.error}` : '';
+        const item = { label: s.name, icon: status, hint: `${s.tools} tool${s.tools === 1 ? '' : 's'}${err}` };
         const row = actionRow(item, false, false);
         row.disabled = true;
         body.appendChild(row);
       });
     }
+    const reload = actionRow({ label: 'Reload MCP servers', icon: '↻' }, false, false);
+    reload.onclick = () => { vscode.postMessage({ type: 'reloadMcp' }); closeActionMenu(); };
+    body.appendChild(reload);
     const cfg = actionRow({ label: 'Configure MCP servers…', icon: '⚙' }, false, true);
     cfg.onclick = () => { vscode.postMessage({ type: 'openMcpSettings' }); closeActionMenu(); };
     body.appendChild(cfg);
@@ -489,7 +511,7 @@ window.addEventListener('message', (e) => {
   if (m.type === 'reasoning') appendReasoning(m.text);
   if (m.type === 'reasoningDone') { const b = document.querySelector('.reasoning-live'); if (b) b.open = false; }
   if (m.type === 'usage' && m.usage) { const u = $('usage-last'); if (u) u.textContent = `↑${m.usage.promptTokens} ↓${m.usage.completionTokens} tok`; }
-  if (m.type === 'chats') { window.__lastChats = m; renderChatPicker(m.metas, m.activeId); fillPersonaPicker(); }
+  if (m.type === 'chats') { window.__lastChats = m; renderChatPicker(m.metas, m.activeId); fillPersonaPicker(); fillSkillPicker(); }
   if (m.type === 'prefs') {
     window.__prefs = { prompts: m.prompts || [], params: m.params || {} };
     fillParams(); renderPrompts(); fillComparePicker();
@@ -501,13 +523,14 @@ window.addEventListener('message', (e) => {
   }
   if (m.type === 'folders') renderFolderFilter(m.folders || []);
   if (m.type === 'personas') { window.__personas = m.personas || []; renderPersonas(); fillPersonaPicker(); if (actionMenuOpen && actionSub === 'skills') renderActionMenu(); }
+  if (m.type === 'skills') { window.__skills = m.skills || []; renderSkillsList(); fillSkillPicker(); if (actionMenuOpen && actionSub === 'skills') renderActionMenu(); }
   if (m.type === 'chatMode') {
     chatMode = m.mode || 'ask';
     window.__compareId = m.compareId || null;
     syncAgentToggle();
     updateModeBadge();
   }
-  if (m.type === 'mcpStatus') { mcpServers = m.servers || []; if (actionMenuOpen && actionSub === 'mcp') renderActionMenu(); }
+  if (m.type === 'mcpStatus') { mcpServers = m.servers || []; renderMcpList(); if (actionMenuOpen && actionSub === 'mcp') renderActionMenu(); }
   if (m.type === 'openActionSub') openActionMenu(m.sub);
   if (m.type === 'projectRules') {
     const el = $('rules-path');
@@ -743,6 +766,40 @@ function fillPersonaPicker() {
   if (meta && meta.personaId) pick.value = meta.personaId;
 }
 
+function fillSkillPicker() {
+  const pick = $('skill-picker'); if (!pick) return;
+  const list = window.__skills || [];
+  const metas = (window.__lastChats && window.__lastChats.metas) || [];
+  const activeId = (window.__lastChats && window.__lastChats.activeId) || ($('chat-picker') && $('chat-picker').value);
+  const meta = metas.find((c) => c.id === activeId);
+  pick.innerHTML = '<option value="">None</option>' + list.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
+  if (meta && meta.skillId) pick.value = meta.skillId;
+}
+
+function renderSkillsList() {
+  const box = $('skills-list'); if (!box) return;
+  const list = window.__skills || [];
+  if (!list.length) {
+    box.innerHTML = '<p class="settings-hint">No SKILL.md files found in configured directories.</p>';
+    return;
+  }
+  box.innerHTML = list.map((s) => `<div class="skill-item"><span class="skill-use" data-id="${esc(s.id)}">⚡ ${esc(s.name)}</span><span class="settings-hint">${esc(s.description || '')}</span></div>`).join('');
+}
+
+function renderMcpList() {
+  const box = $('mcp-list'); if (!box) return;
+  const servers = mcpServers || [];
+  if (!servers.length) {
+    box.innerHTML = '<p class="settings-hint">No MCP servers configured.</p>';
+    return;
+  }
+  box.innerHTML = servers.map((s) => {
+    const status = s.connected ? 'connected' : 'offline';
+    const err = s.error ? ` — ${esc(s.error)}` : '';
+    return `<div class="mcp-item"><span>${s.connected ? '●' : '○'} ${esc(s.name)}</span><span class="settings-hint">${status} · ${s.tools} tool(s)${err}</span></div>`;
+  }).join('');
+}
+
 function renderPersonas() {
   const box = $('personas-list'); if (!box) return;
   const list = window.__personas || [];
@@ -939,6 +996,11 @@ $('banner-close').onclick = () => { $('banner').hidden = true; };
 { const _ro = $('rules-open'); if (_ro) _ro.onclick = () => vscode.postMessage({ type: 'openRulesFile' }); }
 { const _ua = $('undo-agent'); if (_ua) _ua.onclick = () => vscode.postMessage({ type: 'undoAgentRun' }); }
 { const _pp = $('persona-picker'); if (_pp) _pp.onchange = () => vscode.postMessage({ type: 'setPersona', id: _pp.value || null }); }
+{ const _sp = $('skill-picker'); if (_sp) _sp.onchange = () => vscode.postMessage({ type: 'setSkill', id: _sp.value || null }); }
+{ const _sr = $('skills-reload'); if (_sr) _sr.onclick = () => vscode.postMessage({ type: 'reloadSkills' }); }
+{ const _ss = $('skills-settings'); if (_ss) _ss.onclick = () => vscode.postMessage({ type: 'openSkillSettings' }); }
+{ const _mr = $('mcp-reload'); if (_mr) _mr.onclick = () => vscode.postMessage({ type: 'reloadMcp' }); }
+{ const _ms = $('mcp-settings'); if (_ms) _ms.onclick = () => vscode.postMessage({ type: 'openMcpSettings' }); }
 { const _psv = $('persona-save'); if (_psv) _psv.onclick = () => {
   const name = ($('persona-name')?.value || '').trim();
   const systemPrompt = ($('persona-prompt')?.value || '').trim();
@@ -1005,6 +1067,13 @@ document.addEventListener('click', (e) => {
       if ($('persona-name')) $('persona-name').value = p.name;
       if ($('persona-prompt')) $('persona-prompt').value = p.systemPrompt;
     }
+    return;
+  }
+  const sUse = e.target.closest && e.target.closest('.skill-use');
+  if (sUse) {
+    vscode.postMessage({ type: 'setSkill', id: sUse.dataset.id });
+    const pick = $('skill-picker');
+    if (pick) pick.value = sUse.dataset.id;
     return;
   }
   const use = e.target.closest && e.target.closest('.pr-title-use');

@@ -13,6 +13,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('fortress-code.openChat', () =>
       vscode.commands.executeCommand('fortressCode.chat.focus')),
     vscode.commands.registerCommand('fortress-code.reloadWebview', () => provider.reloadWebviews()),
+    vscode.commands.registerCommand('fortress-code.reloadMcp', () => provider.reloadMcpServers()),
+    vscode.commands.registerCommand('fortress-code.reloadSkills', () => provider.reloadSkillsList()),
     vscode.commands.registerCommand('fortress-code.toggleDevMode', async () => {
       const on = !context.globalState.get<boolean>('fortressCode.devMode', false);
       if (on) {

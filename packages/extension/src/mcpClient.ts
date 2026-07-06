@@ -11,28 +11,40 @@ export class McpClient {
   private nextId = 1;
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private tools: McpTool[] = [];
+  private lastError: string | null = null;
 
   constructor(private cfg: McpServerConfig) {}
 
   /** Connect and fetch tools from the MCP server. */
   async connect(): Promise<McpTool[]> {
     if (this.proc) return this.tools;
-    this.proc = spawn(this.cfg.command, this.cfg.args ?? [], {
-      env: { ...process.env, ...this.cfg.env },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    const rl = createInterface({ input: this.proc.stdout });
-    rl.on('line', (line) => this.onLine(line));
-    this.proc.stderr.on('data', () => { /* ignore */ });
-    await this.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'fortress-code', version: '0.1.0' } });
-    await this.notify('notifications/initialized', {});
-    const listed = await this.request('tools/list', {}) as { tools?: McpTool[] };
-    this.tools = (listed?.tools ?? []).map((t) => ({
-      name: `${this.cfg.name}__${t.name}`,
-      description: t.description ?? t.name,
-      inputSchema: (t as { inputSchema?: object }).inputSchema ?? { type: 'object', properties: {} },
-    }));
-    return this.tools;
+    this.lastError = null;
+    try {
+      this.proc = spawn(this.cfg.command, this.cfg.args ?? [], {
+        env: { ...process.env, ...this.cfg.env },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      const rl = createInterface({ input: this.proc.stdout });
+      rl.on('line', (line) => this.onLine(line));
+      this.proc.stderr.on('data', (d) => {
+        const msg = String(d).trim();
+        if (msg) this.lastError = msg.slice(0, 200);
+      });
+      this.proc.on('error', (e) => { this.lastError = e.message; });
+      await this.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'fortress-code', version: '0.1.0' } });
+      await this.notify('notifications/initialized', {});
+      const listed = await this.request('tools/list', {}) as { tools?: McpTool[] };
+      this.tools = (listed?.tools ?? []).map((t) => ({
+        name: `${this.cfg.name}__${t.name}`,
+        description: t.description ?? t.name,
+        inputSchema: (t as { inputSchema?: object }).inputSchema ?? { type: 'object', properties: {} },
+      }));
+      return this.tools;
+    } catch (e) {
+      this.lastError = e instanceof Error ? e.message : String(e);
+      this.dispose();
+      throw e;
+    }
   }
 
   /** Call an MCP tool by prefixed name. */
@@ -54,10 +66,12 @@ export class McpClient {
   serverName(): string { return this.cfg.name; }
   isConnected(): boolean { return !!this.proc; }
   toolCount(): number { return this.tools.length; }
+  error(): string | null { return this.lastError; }
 
   dispose(): void {
     this.proc?.kill();
     this.proc = null;
+    this.tools = [];
   }
 
   private onLine(line: string): void {

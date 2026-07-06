@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { validateHistory, type ChatMessage } from '@fortress-code/shared';
 import { Session } from './chat/session';
 
-export interface ChatMeta { id: string; title: string; folder?: string; personaId?: string }
+export interface ChatMeta { id: string; title: string; folder?: string; personaId?: string; skillId?: string }
 interface MementoLike { get(key: string): unknown; update(key: string, value: unknown): Thenable<void> | void }
 const KEY = 'fortressCode.chats';
 const LEGACY = 'fortressCode.session';
@@ -13,15 +13,17 @@ export class SessionStore {
   private titles: Map<string, string>;
   private folders: Map<string, string>;
   private personaIds: Map<string, string>;
+  private skillIds: Map<string, string>;
   private sessions: Map<string, Session>;
 
   private constructor(
     private state: MementoLike, activeId: string, order: string[],
     titles: Map<string, string>, folders: Map<string, string>, personaIds: Map<string, string>,
+    skillIds: Map<string, string>,
     sessions: Map<string, Session>,
   ) {
     this.activeId = activeId; this.order = order; this.titles = titles;
-    this.folders = folders; this.personaIds = personaIds; this.sessions = sessions;
+    this.folders = folders; this.personaIds = personaIds; this.skillIds = skillIds; this.sessions = sessions;
   }
 
   metas(): ChatMeta[] {
@@ -30,6 +32,7 @@ export class SessionStore {
       title: this.titles.get(id) || 'New chat',
       folder: this.folders.get(id),
       personaId: this.personaIds.get(id),
+      skillId: this.skillIds.get(id),
     }));
   }
 
@@ -48,6 +51,13 @@ export class SessionStore {
     if (!this.sessions.has(chatId)) return;
     if (personaId) this.personaIds.set(chatId, personaId);
     else this.personaIds.delete(chatId);
+    this.save();
+  }
+
+  setSkill(chatId: string, skillId: string | undefined): void {
+    if (!this.sessions.has(chatId)) return;
+    if (skillId) this.skillIds.set(chatId, skillId);
+    else this.skillIds.delete(chatId);
     this.save();
   }
 
@@ -79,6 +89,10 @@ export class SessionStore {
     this.order.unshift(id); this.titles.set(id, title); this.sessions.set(id, copy);
     const folder = this.folders.get(this.activeId);
     if (folder) this.folders.set(id, folder);
+    const persona = this.personaIds.get(this.activeId);
+    if (persona) this.personaIds.set(id, persona);
+    const skill = this.skillIds.get(this.activeId);
+    if (skill) this.skillIds.set(id, skill);
     this.activeId = id; this.save();
   }
   touchTitle(): void {
@@ -100,6 +114,7 @@ export class SessionStore {
       const titles = new Map(raw.metas.map((m) => [m.id, m.title] as const));
       const folders = new Map(raw.metas.filter((m) => m.folder).map((m) => [m.id, m.folder!] as const));
       const personaIds = new Map(raw.metas.filter((m) => m.personaId).map((m) => [m.id, m.personaId!] as const));
+      const skillIds = new Map(raw.metas.filter((m) => m.skillId).map((m) => [m.id, m.skillId!] as const));
       const sessions = new Map<string, Session>();
       for (const id of order) {
         const s = new Session();
@@ -107,13 +122,13 @@ export class SessionStore {
         sessions.set(id, s);
       }
       const activeId = sessions.has(raw.activeId) ? raw.activeId : order[0];
-      return new SessionStore(state, activeId, order, titles, folders, personaIds, sessions);
+      return new SessionStore(state, activeId, order, titles, folders, personaIds, skillIds, sessions);
     }
     const legacy = state.get(LEGACY);
     const s = new Session();
     try { if (legacy) s.messages = validateHistory(legacy); } catch { s.messages = []; }
     const id = randomUUID();
-    const store = new SessionStore(state, id, [id], new Map([[id, 'New chat']]), new Map(), new Map(), new Map([[id, s]]));
+    const store = new SessionStore(state, id, [id], new Map([[id, 'New chat']]), new Map(), new Map(), new Map(), new Map([[id, s]]));
     store.touchTitle();
     store.save();
     return store;

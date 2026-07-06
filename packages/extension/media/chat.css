@@ -503,6 +503,9 @@ code.inl { background: var(--vscode-textCodeBlock-background, #2a2a2a); padding:
 #mem-facts, #pr-text, #persona-prompt { width: 100%; min-height: 56px; margin: 6px 0; resize: vertical; }
 #persona-name { width: 100%; margin: 6px 0; }
 .prompt-item, .persona-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--fc-border); font-size: 12px; }
+.skill-item, .mcp-item { padding: 6px 0; border-bottom: 1px solid var(--fc-border); font-size: 12px; }
+.skill-use { cursor: pointer; }
+.skill-use:hover { text-decoration: underline; }
 .prompt-item .pr-title-use, .persona-item .persona-use { cursor: pointer; flex: 1; }
 .prompt-item .pr-del, .persona-item .persona-del { background: none; border: none; color: var(--fc-muted); cursor: pointer; }
 .pr-actions { display: flex; gap: 8px; margin-top: 6px; }

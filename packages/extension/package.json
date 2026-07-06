@@ -25,16 +25,32 @@
         "fortressCode.mcpServers": {
           "type": "array",
           "default": [],
-          "description": "MCP stdio servers for agent mode (name, command, args).",
+          "description": "MCP stdio servers for agent mode. Tools are available when Agent mode is on.",
           "items": {
             "type": "object",
             "properties": {
-              "name": { "type": "string" },
-              "command": { "type": "string" },
-              "args": { "type": "array", "items": { "type": "string" } }
+              "name": { "type": "string", "description": "Short label shown in the chat UI" },
+              "command": { "type": "string", "description": "Executable (e.g. npx, node, uv)" },
+              "args": { "type": "array", "items": { "type": "string" }, "description": "Command arguments" },
+              "env": {
+                "type": "object",
+                "additionalProperties": { "type": "string" },
+                "description": "Extra environment variables for the server process"
+              }
             },
             "required": ["name", "command"]
           }
+        },
+        "fortressCode.skillDirectories": {
+          "type": "array",
+          "default": [
+            "~/.cursor/skills-cursor",
+            "~/.claude/skills",
+            "~/.codex/skills",
+            ".fortress/skills"
+          ],
+          "description": "Directories to scan recursively for SKILL.md files (supports ~ and workspace-relative paths).",
+          "items": { "type": "string" }
         }
       }
     },
@@ -68,6 +84,14 @@
       {
         "command": "fortress-code.reloadWebview",
         "title": "Fortress Code: Reload Chat Webview"
+      },
+      {
+        "command": "fortress-code.reloadMcp",
+        "title": "Fortress Code: Reload MCP Servers"
+      },
+      {
+        "command": "fortress-code.reloadSkills",
+        "title": "Fortress Code: Reload Skills"
       },
       {
         "command": "fortress-code.toggleDevMode",
