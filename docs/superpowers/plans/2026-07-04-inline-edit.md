@@ -9,7 +9,7 @@
 **Tech Stack:** TypeScript, VS Code API, vitest. No new deps.
 
 ## Global Constraints
-- Work from `/Users/cmuir/Development/curtis-llama/fortress-code`, branch `main`. Stage explicitly. Trailer `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
+- Work from `/Users/cmuir/Development/curtis-llama/fortress-chat`, branch `main`. Stage explicitly. Trailer `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
 - Route through the panel's currently-selected model via the same `assertAllowed`-gated resolver chat uses; dev mode → Fireworks. No new governance surface.
 - Output must be code-only (strip ```fences); no chat-history entry created.
 
@@ -40,10 +40,10 @@ describe('buildInlineEditMessages', () => {
   });
 });
 ```
-- [ ] **Step 2: run → FAIL** (`npm test -w fortress-code`)
+- [ ] **Step 2: run → FAIL** (`npm test -w fortress-chat`)
 - [ ] **Step 3: implement** (`src/inlineEdit.ts`)
 ```ts
-import type { ChatMessage } from '@fortress-code/shared';
+import type { ChatMessage } from '@fortress-chat/shared';
 
 const EDIT_SYSTEM = 'You are a precise code editor. Rewrite the user\'s selected code according to their instruction. Output ONLY the new code — no explanations, no markdown fences.';
 
@@ -100,16 +100,16 @@ Import `buildInlineEditMessages, stripCodeFences` from `../inlineEdit`.
 
 **Files:** Modify `src/extension.ts`, `package.json`
 
-- [ ] `package.json`: add command `fortress-code.inlineEdit` (title "Fortress Code: Inline Edit") and keybinding `{ command: 'fortress-code.inlineEdit', key: 'ctrl+shift+k', mac: 'cmd+shift+k', when: 'editorTextFocus' }`.
+- [ ] `package.json`: add command `fortress-chat.inlineEdit` (title "FortressChat: Inline Edit") and keybinding `{ command: 'fortress-chat.inlineEdit', key: 'ctrl+shift+k', mac: 'cmd+shift+k', when: 'editorTextFocus' }`.
 - [ ] `extension.ts`: add to the `context.subscriptions.push(...)`:
 ```ts
-vscode.commands.registerCommand('fortress-code.inlineEdit', async () => {
+vscode.commands.registerCommand('fortress-chat.inlineEdit', async () => {
   const ed = vscode.window.activeTextEditor;
   if (!ed) { void vscode.window.showErrorMessage('Open a file first.'); return; }
   const range = ed.selection.isEmpty ? ed.document.lineAt(ed.selection.active.line).range : ed.selection;
-  const instruction = await vscode.window.showInputBox({ prompt: 'Fortress Code — inline edit', placeHolder: 'e.g. add error handling' });
+  const instruction = await vscode.window.showInputBox({ prompt: 'FortressChat — inline edit', placeHolder: 'e.g. add error handling' });
   if (!instruction) return;
-  await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Fortress Code editing…', cancellable: true }, async (_p, token) => {
+  await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'FortressChat editing…', cancellable: true }, async (_p, token) => {
     const ac = new AbortController();
     token.onCancellationRequested(() => ac.abort());
     try {

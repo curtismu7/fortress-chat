@@ -46,7 +46,7 @@ describe('SessionStore', () => {
   });
 
   it('migrates a legacy single session', () => {
-    const store = mem({ 'fortressCode.session': [{ role: 'user', content: 'legacy' }] });
+    const store = mem({ 'fortressChat.session': [{ role: 'user', content: 'legacy' }] });
     const s = SessionStore.load(store);
     expect(s.active().messages[0].content).toBe('legacy');
   });

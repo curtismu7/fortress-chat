@@ -1,5 +1,5 @@
 {
-  "name": "@fortress-code/manager",
+  "name": "@fortress-chat/manager",
   "version": "0.1.0",
   "type": "commonjs",
   "main": "dist/index.js",
@@ -8,7 +8,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fortress-code/shared": "0.1.0",
+    "@fortress-chat/shared": "0.1.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {

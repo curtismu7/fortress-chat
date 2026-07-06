@@ -200,7 +200,7 @@ function renderActionSub(body, q) {
     if (!servers.length) {
       const hint = document.createElement('div');
       hint.className = 'action-hint';
-      hint.textContent = 'No MCP servers configured. Add fortressCode.mcpServers in VS Code settings.';
+      hint.textContent = 'No MCP servers configured. Add fortressChat.mcpServers in VS Code settings.';
       body.appendChild(hint);
     } else {
       servers.forEach((s) => {
@@ -514,7 +514,7 @@ function renderState(status) {
   } else if (!status.binaryInstalled && !(window.__orKeySet && selectedId && (policy.openrouter || []).some((m) => m.id === selectedId))) {
     setup.hidden = false;
     const gb = Math.round(status.ram.totalBytes / 2 ** 30);
-    setup.innerHTML = `<b>Welcome to Fortress Code</b><p>This Mac has ${gb} GB RAM. Set up the local engine to run models on-device.</p><button type="button" id="do-setup">Set up local engine</button>`;
+    setup.innerHTML = `<b>Welcome to FortressChat</b><p>This Mac has ${gb} GB RAM. Set up the local engine to run models on-device.</p><button type="button" id="do-setup">Set up local engine</button>`;
     const btn = $('do-setup');
     if (btn) btn.onclick = () => vscode.postMessage({ type: 'installBinary' });
     if (!selectedId && !window.__pickerShown) { window.__pickerShown = true; openModelPicker(); }

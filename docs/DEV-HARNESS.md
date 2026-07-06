@@ -1,4 +1,4 @@
-# Fortress Code development harness
+# FortressChat development harness
 
 How to run, test, and dogfood the VS Code extension locally.
 
@@ -19,7 +19,7 @@ npm run test:e2e  # @vscode/test-electron webview + command smoke tests
 
 Open the repo in VS Code → **Run and Debug** → **Run Extension (Fixture Workspace)** → F5.
 
-A second window opens with `fixtures/sample-app` as the workspace. Use the Fortress Code sidebar there.
+A second window opens with `fixtures/sample-app` as the workspace. Use the FortressChat sidebar there.
 
 ## Launch configurations (`.vscode/launch.json`)
 
@@ -38,9 +38,9 @@ Every worktree should include `.vscode/launch.json` and `.vscode/tasks.json` so 
 |------------------|------------|
 | `packages/extension/media/*` (HTML/CSS/JS) | **Automatic** in Extension Development mode — webviews reload ~300ms after save |
 | `packages/extension/src/*` (TypeScript) | Run **`npm run watch`** (or **`npm run dev`**) then **Developer: Reload Window** in the extension host |
-| `@fortress-code/shared` or manager | Stop watch, `npm run build`, reload window |
+| `@fortress-chat/shared` or manager | Stop watch, `npm run build`, reload window |
 
-Manual webview refresh anytime: **Command Palette → “Fortress Code: Reload Chat Webview”** (`fortress-code.reloadWebview`).
+Manual webview refresh anytime: **Command Palette → “FortressChat: Reload Chat Webview”** (`fortress-chat.reloadWebview`).
 
 Backend (`out/extension.js`) changes always require a window reload; only the webview shell hot-reloads.
 
@@ -76,13 +76,13 @@ npm run test:e2e
 Runs inside a real VS Code Extension Development Host with `FORTRESS_CODE_TEST=1`:
 
 1. Extension activates
-2. Commands exist (including test harness `fortress-code.test.getWebviewState`)
+2. Commands exist (including test harness `fortress-chat.test.getWebviewState`)
 3. Sidebar webview attaches and receives `policy` or daemon `error`
 4. Fixture `.fortress/rules.md` is posted as `projectRules`
 5. **Open Chat in Editor Tab** attaches a second webview
 6. **Reload Chat Webview** re-syncs state without crashing
 
-E2E uses temp user-data under `/tmp/fortress-code-vscode-test` to avoid IPC path-length issues.
+E2E uses temp user-data under `/tmp/fortress-chat-vscode-test` to avoid IPC path-length issues.
 
 Debug E2E interactively: launch **Extension Tests (E2E smoke)** from Run and Debug.
 
@@ -103,10 +103,10 @@ Debug E2E interactively: launch **Extension Tests (E2E smoke)** from Run and Deb
 
 ## MCP servers (agent mode)
 
-Add stdio MCP servers in VS Code settings (`fortressCode.mcpServers`) or **Settings → MCP servers** in chat:
+Add stdio MCP servers in VS Code settings (`fortressChat.mcpServers`) or **Settings → MCP servers** in chat:
 
 ```json
-"fortressCode.mcpServers": [
+"fortressChat.mcpServers": [
   {
     "name": "github",
     "command": "npx",
@@ -120,15 +120,15 @@ MCP tools are available in **Agent** mode (prefixed as `serverName__toolName`). 
 
 ## Skills (SKILL.md)
 
-Fortress Code scans configured directories for `SKILL.md` files (Cursor, Claude, Codex, project `.fortress/skills`):
+FortressChat scans configured directories for `SKILL.md` files (Cursor, Claude, Codex, project `.fortress/skills`):
 
 - **Composer `+` → Skills** — pick a skill for the active chat
-- **Settings → Skills** — picker, reload, directory config (`fortressCode.skillDirectories`)
+- **Settings → Skills** — picker, reload, directory config (`fortressChat.skillDirectories`)
 
 Selected skills inject their instructions into the system prompt (like personas). Defaults:
 
 ```json
-"fortressCode.skillDirectories": [
+"fortressChat.skillDirectories": [
   "~/.cursor/skills-cursor",
   "~/.claude/skills",
   "~/.codex/skills",

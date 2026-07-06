@@ -1,4 +1,4 @@
-# Fortress Code Mac — Design
+# FortressChat Mac — Design
 
 **Status:** Approved design
 **Date:** 2026-07-05
@@ -19,16 +19,16 @@ extension, no VS Code required.
 - **Distribution:** unsigned DMG attached to GitHub Releases on a public
   repo; README documents right-click → Open past Gatekeeper. Signing can be
   added later without rework.
-- **Repo:** NEW separate repo `fortress-code-mac`
-  (github.com/curtismu7/fortress-code-mac), consuming the main repo via a
+- **Repo:** NEW separate repo `fortress-chat-mac`
+  (github.com/curtismu7/fortress-chat-mac), consuming the main repo via a
   **git submodule pinned to a commit** — no npm publishing, deliberate and
   reviewable updates.
 
 ## Repo layout & reuse
 
 ```text
-fortress-code-mac/
-  vendor/fortress-code        <- git submodule, pinned commit of main repo
+fortress-chat-mac/
+  vendor/fortress-chat        <- git submodule, pinned commit of main repo
   src/main/                   <- Electron main process (TypeScript)
     main.ts                   <- app lifecycle, BrowserWindow, menu
     daemon.ts                 <- spawn/ensure manager (reuses vendor manager bundle)
@@ -45,8 +45,8 @@ fortress-code-mac/
   package.json  electron-builder.yml  tsconfig.json  vitest.config.ts
 ```
 
-- `@fortress-code/shared` and `@fortress-code/manager` are imported from the
-  submodule via `file:vendor/fortress-code/packages/...` references.
+- `@fortress-chat/shared` and `@fortress-chat/manager` are imported from the
+  submodule via `file:vendor/fortress-chat/packages/...` references.
 - The chat UI (`chat.html/css/js`) is copied, not forked: the only
   renderer-side additions are `vscode-shim.js` (3-line `acquireVsCodeApi`
   shim over the preload bridge) and `theme.css`.
@@ -91,7 +91,7 @@ fortress-code-mac/
 - `electron-builder` produces an unsigned **arm64-only** `.dmg` for v1
   (matches the pinned llama.cpp binary; Intel support is out of scope).
 - `npm run dist` builds; releases attached manually (or via CI later) to
-  GitHub Releases on `fortress-code-mac`.
+  GitHub Releases on `fortress-chat-mac`.
 - README: install steps + the right-click → Open Gatekeeper note.
 
 ## Error handling

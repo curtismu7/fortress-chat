@@ -10,27 +10,27 @@
 
 ## Global Constraints
 
-- Repos: extension work in `~/Development/curtis-llama/fortress-code` (branch `feat/phase1-chat-ux`, merged to main at the end); Mac work in `~/Development/curtis-llama/fortress-code-mac` (main, per that repo's convention).
+- Repos: extension work in `~/Development/curtis-llama/fortress-chat` (branch `feat/phase1-chat-ux`, merged to main at the end); Mac work in `~/Development/curtis-llama/fortress-chat-mac` (main, per that repo's convention).
 - `chat.js`/`chat.css` stay byte-identical-shareable: additive changes only; NO frontend-specific branches inside them. `chat.html` changes must keep the Mac sync-renderer's anchors intact (`{cspSource}`, the `chat.css` link line, the `chat.js` script line).
 - Emoji rule: only `⚠️ ✅ ❌ 🔐 ✕ ✓` (existing glyphs like `✎` stay; the fork button uses text glyph `⑂`).
 - Webview XSS posture: never template attacker-influenced values into HTML attributes — DOM construction (`dataset`, `textContent`) as established. KaTeX `trust:false, throwOnError:false`; Mermaid `securityLevel:'strict', startOnLoad:false`.
 - New message handlers follow the existing banner-on-error pattern; storage failures never crash a turn.
-- TDD per task. Test commands: `npm test -w fortress-code` (ext), `npm test` (mac). Builds must stay clean (`npm run build`).
+- TDD per task. Test commands: `npm test -w fortress-chat` (ext), `npm test` (mac). Builds must stay clean (`npm run build`).
 - Params semantics: unset values are ABSENT from the request body (not null/default numbers). Ranges: temperature 0-2, top_p 0-1, max_tokens positive int.
-- Storage keys: `fortressCode.prompts` → `SavedPrompt[]`; `fortressCode.params` → `Params`.
+- Storage keys: `fortressChat.prompts` → `SavedPrompt[]`; `fortressChat.params` → `Params`.
 - Message protocol additions — inbound: `savePrompt {prompt}`, `deletePrompt {id}`, `setParams {params}`, `exportChat {}`, `searchChats {query}`, `forkChat {index}`; outbound: `prefs { prompts, params }`, `searchResults { metas }`.
 
 ---
 
 ## File Structure
 
-**fortress-code (extension repo)**
+**fortress-chat (extension repo)**
 - Create: `packages/extension/src/prefs.ts`, `src/exportChat.ts`, `src/chatSearch.ts`, `media/vendor/` (katex.min.js, katex.min.css, fonts/, auto-render.min.js, mermaid.min.js)
 - Modify: `src/sessionStore.ts` (add `fork`), `src/chat/ChatViewProvider.ts` (init prefs post, six cases, params injection), `media/chat.html` (header buttons, prompts section, search input, CSP font-src, vendor tags), `media/chat.css`, `media/chat.js` (handlers, slash dropdown, popover, fork button, math/mermaid post-pass)
 - Tests: `src/test/prefs.test.ts`, `src/test/exportChat.test.ts`, `src/test/chatSearch.test.ts`, extend `src/test/sessionStore.test.ts`
 
-**fortress-code-mac**
-- Modify: `vendor/fortress-code` (submodule bump), `scripts/sync-renderer.mjs` (copy `vendor/`), `src/main/controller.ts` (twin six cases + prefs), `src/main/main.ts` (`saveFile` dep), `test/controller.test.ts` (new cases)
+**fortress-chat-mac**
+- Modify: `vendor/fortress-chat` (submodule bump), `scripts/sync-renderer.mjs` (copy `vendor/`), `src/main/controller.ts` (twin six cases + prefs), `src/main/main.ts` (`saveFile` dep), `test/controller.test.ts` (new cases)
 
 ---
 
@@ -90,7 +90,7 @@ describe('Prefs params', () => {
 });
 ```
 
-- [ ] **Step 2: red** — `npm test -w fortress-code -- prefs` fails (module missing).
+- [ ] **Step 2: red** — `npm test -w fortress-chat -- prefs` fails (module missing).
 - [ ] **Step 3: implement**
 
 ```ts
@@ -98,8 +98,8 @@ export interface SavedPrompt { id: string; title: string; text: string }
 export interface Params { temperature?: number; top_p?: number; max_tokens?: number }
 export interface MementoLike { get(key: string): unknown; update(key: string, value: unknown): unknown }
 
-const PROMPTS_KEY = 'fortressCode.prompts';
-const PARAMS_KEY = 'fortressCode.params';
+const PROMPTS_KEY = 'fortressChat.prompts';
+const PARAMS_KEY = 'fortressChat.params';
 
 const RANGES: Record<keyof Params, (v: number) => boolean> = {
   temperature: (v) => v >= 0 && v <= 2,
@@ -140,7 +140,7 @@ export class Prefs {
 }
 ```
 
-- [ ] **Step 4: green** — `npm test -w fortress-code -- prefs` passes; full suite + build stay green.
+- [ ] **Step 4: green** — `npm test -w fortress-chat -- prefs` passes; full suite + build stay green.
 - [ ] **Step 5: commit** — `git add packages/extension/src/prefs.ts packages/extension/src/test/prefs.test.ts && git commit -m "feat(prefs): prompt library + model params storage"`
 
 ---
@@ -228,7 +228,7 @@ In `sessionStore.ts` (after `switchTo`):
 `chatSearch.ts`:
 
 ```ts
-import type { ChatMessage } from '@fortress-code/shared';
+import type { ChatMessage } from '@fortress-chat/shared';
 import type { ChatMeta } from './sessionStore';
 
 export function searchChats(query: string, metas: ChatMeta[], messagesById: Record<string, ChatMessage[]>): ChatMeta[] {
@@ -287,7 +287,7 @@ describe('exportMarkdown', () => {
 - [ ] **Step 3: implement**
 
 ```ts
-import type { ChatMessage } from '@fortress-code/shared';
+import type { ChatMessage } from '@fortress-chat/shared';
 
 export function exportMarkdown(title: string, messages: ChatMessage[], now: Date): string {
   const parts: string[] = [`# ${title}`, `_Exported ${now.toISOString().slice(0, 10)}_`];
@@ -346,7 +346,7 @@ export function exportMarkdown(title: string, messages: ChatMessage[], now: Date
 
 (`target` is already `let`.)
 
-- [ ] **Step 2: verify** — `npm test -w fortress-code` all green; `npm run build` clean.
+- [ ] **Step 2: verify** — `npm test -w fortress-chat` all green; `npm run build` clean.
 - [ ] **Step 3: commit** — `feat(chat): wire prompts/params/export/search/fork into ChatViewProvider`
 
 ---
@@ -384,7 +384,7 @@ export function exportMarkdown(title: string, messages: ChatMessage[], now: Date
 1. Obtain artifacts (dev-only install, then copy — do NOT add runtime deps):
 
 ```bash
-npm i -D katex mermaid -w fortress-code
+npm i -D katex mermaid -w fortress-chat
 mkdir -p packages/extension/media/vendor/fonts
 cp node_modules/katex/dist/katex.min.js packages/extension/media/vendor/
 cp node_modules/katex/dist/katex.min.css packages/extension/media/vendor/
@@ -445,21 +445,21 @@ Requirements over the sketch: detect mermaid via the fenced language when `rende
 
 ### Task 7: Ship the extension
 
-- [ ] Full sweep: `npm test -w @fortress-code/shared && npm test -w @fortress-code/manager && npm test -w fortress-code && npm run build`
-- [ ] Bump `packages/extension/package.json` patch version; `npm run package -w fortress-code`; `code --install-extension fortress-code.vsix --force`; remove the previous installed version dir.
+- [ ] Full sweep: `npm test -w @fortress-chat/shared && npm test -w @fortress-chat/manager && npm test -w fortress-chat && npm run build`
+- [ ] Bump `packages/extension/package.json` patch version; `npm run package -w fortress-chat`; `code --install-extension fortress-chat.vsix --force`; remove the previous installed version dir.
 - [ ] Merge `feat/phase1-chat-ux` → main (--no-ff), push, delete branch.
 - [ ] Manual smoke list for the user (fresh window): slash-prompt insert, params set + visible effect, export dialog, search filters chats, fork creates "Fork:" chat, a mermaid block renders, `$x^2$` renders.
 
 ---
 
-### Task 8: Mac app — submodule bump + twin (fortress-code-mac repo)
+### Task 8: Mac app — submodule bump + twin (fortress-chat-mac repo)
 
 **Files:**
-- Modify: `vendor/fortress-code` (bump to the merged main commit), `scripts/sync-renderer.mjs`, `src/main/controller.ts`, `src/main/main.ts`, `test/controller.test.ts`
+- Modify: `vendor/fortress-chat` (bump to the merged main commit), `scripts/sync-renderer.mjs`, `src/main/controller.ts`, `src/main/main.ts`, `test/controller.test.ts`
 
 **Steps:**
 
-1. `git -C vendor/fortress-code fetch && git -C vendor/fortress-code checkout <merged-main-sha>`; commit the gitlink bump.
+1. `git -C vendor/fortress-chat fetch && git -C vendor/fortress-chat checkout <merged-main-sha>`; commit the gitlink bump.
 2. `sync-renderer.mjs`: also copy the `vendor/` subdirectory of the media dir (recursive `cpSync`) into the renderer output; extend the sync test to assert `renderer/vendor/katex.min.js` exists and `chat.js` is still byte-identical.
 3. `controller.ts`: twin Task 4 exactly — `Prefs` over `FileMemento(join(userDataDir,'prefs.json'))`; the six cases verbatim except `exportChat` uses a new `deps.saveFile(defaultName: string, content: string): Promise<void>` (added to `ControllerDeps`); `main.ts` implements it with `dialog.showSaveDialog` + `writeFileSync`.
 4. Extend `test/controller.test.ts`: prefs post on init; savePrompt→prefs post; forkChat produces a "Fork:" chat with truncated messages; searchChats posts ranked metas; exportChat calls `deps.saveFile` with markdown containing `# `.

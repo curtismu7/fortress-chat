@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Work from `/Users/cmuir/Development/curtis-llama/fortress-code`, branch `main`. Stage explicitly. Trailer `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
+- Work from `/Users/cmuir/Development/curtis-llama/fortress-chat`, branch `main`. Stage explicitly. Trailer `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
 - Reasoning is **never persisted** — saved answer content is `splitThink(full).content`.
 - No new runtime deps; no daemon/`shared` change. TDD for pure modules + stream; manual for webview.
 - Provider/dev/governance routing and Phase A context stay unchanged in behavior.
@@ -70,7 +70,7 @@ describe('tokens', () => {
 });
 ```
 
-- [ ] **Step 2: run → FAIL** (`npm test -w fortress-code`)
+- [ ] **Step 2: run → FAIL** (`npm test -w fortress-chat`)
 
 - [ ] **Step 3: implement**
 
@@ -117,7 +117,7 @@ class SessionStore {
   static load(state: MementoLike): SessionStore;
 }
 ```
-`MementoLike = { get(k): unknown; update(k, v): Thenable<void>|void }`. Persist key `fortressCode.chats` = `{ activeId, metas, messagesById }`. Migration: if absent but legacy `fortressCode.session` messages exist, seed one chat from them. IDs come from an injected counter (avoid `Date.now()` for testability): use `crypto.randomUUID()` at runtime.
+`MementoLike = { get(k): unknown; update(k, v): Thenable<void>|void }`. Persist key `fortressChat.chats` = `{ activeId, metas, messagesById }`. Migration: if absent but legacy `fortressChat.session` messages exist, seed one chat from them. IDs come from an injected counter (avoid `Date.now()` for testability): use `crypto.randomUUID()` at runtime.
 
 - [ ] **Step 1: failing test** (`src/test/sessionStore.test.ts`)
 
@@ -158,7 +158,7 @@ describe('SessionStore', () => {
     expect(SessionStore.load(store).active().messages[0].content).toBe('persisted');
   });
   it('migrates a legacy single session', () => {
-    const store = mem({ 'fortressCode.session': [{ role: 'user', content: 'legacy' }] });
+    const store = mem({ 'fortressChat.session': [{ role: 'user', content: 'legacy' }] });
     const s = SessionStore.load(store);
     expect(s.active().messages[0].content).toBe('legacy');
   });
@@ -171,13 +171,13 @@ describe('SessionStore', () => {
 
 ```ts
 import { randomUUID } from 'node:crypto';
-import { validateHistory, type ChatMessage } from '@fortress-code/shared';
+import { validateHistory, type ChatMessage } from '@fortress-chat/shared';
 import { Session } from './chat/session';
 
 export interface ChatMeta { id: string; title: string }
 interface MementoLike { get(key: string): unknown; update(key: string, value: unknown): Thenable<void> | void }
-const KEY = 'fortressCode.chats';
-const LEGACY = 'fortressCode.session';
+const KEY = 'fortressChat.chats';
+const LEGACY = 'fortressChat.session';
 
 export class SessionStore {
   activeId: string;

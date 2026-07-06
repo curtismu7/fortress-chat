@@ -20,7 +20,7 @@ describe('Session', () => {
   });
 
   it('drops a poisoned persisted history rather than throwing', () => {
-    const store = new Map<string, unknown>([['fortressCode.session', [{ content: 'Request failed with status code 503' }]]]);
+    const store = new Map<string, unknown>([['fortressChat.session', [{ content: 'Request failed with status code 503' }]]]);
     const memento = { get: (k: string) => store.get(k), update: () => Promise.resolve() } as any;
     expect(Session.load(memento).messages).toEqual([]);
   });

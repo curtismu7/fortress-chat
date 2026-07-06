@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Supervisor } from '../src/supervisor';
-import type { CatalogModel } from '@fortress-code/shared';
+import type { CatalogModel } from '@fortress-chat/shared';
 
 const STUB = join(__dirname, 'fixtures', 'stub-llama-server.mjs');
 const model: CatalogModel = {

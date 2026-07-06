@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { EmbedSupervisor } from '../src/embedSupervisor';
-import type { CatalogModel } from '@fortress-code/shared';
+import type { CatalogModel } from '@fortress-chat/shared';
 
 describe('EmbedSupervisor.buildArgs', () => {
   it('runs llama-server in embedding mode with mean pooling, no --jinja', () => {

@@ -15,7 +15,7 @@
 - **Emoji rule:** only `⚠️ ✅ ❌ 🔐 ✕ ✓` allowed in code/UI text. Everything else plain text or CSS.
 - **Minimal diff:** name the component, change only that. No unrelated refactors.
 - **Every code step is TDD:** write the failing test, run it red, implement minimally, run it green, commit.
-- **Monorepo build:** `npm run build` bundles; `npm test -w fortress-code` and `npm test -w @fortress-code/manager` / `-w @fortress-code/shared` run vitest per package. Ship to VS Code only via `npm run package -w fortress-code` after a version bump (out of scope for these tasks — done once at the end).
+- **Monorepo build:** `npm run build` bundles; `npm test -w fortress-chat` and `npm test -w @fortress-chat/manager` / `-w @fortress-chat/shared` run vitest per package. Ship to VS Code only via `npm run package -w fortress-chat` after a version bump (out of scope for these tasks — done once at the end).
 - **Embedding model prefixes:** `nomic-embed-text-v1.5` requires task prefixes — documents use `search_document: <text>`, queries use `search_query: <text>`. Apply them at the indexer/retriever boundary, never store them in metadata.
 - **Vectors are unit-normalized on write and on query** so cosine similarity reduces to a dot product.
 - **`<workspaceHash>` = `createHash('sha256').update(rootFsPath).digest('hex').slice(0, 16)`** — a workspace root always maps to the same index directory.
@@ -85,7 +85,7 @@ describe('embedding model', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w @fortress-code/shared -- catalog`
+Run: `npm test -w @fortress-chat/shared -- catalog`
 Expected: FAIL — model not found / `embedding` undefined.
 
 - [ ] **Step 3: Extend the schema**
@@ -157,7 +157,7 @@ const LOCAL_ORG: Record<CatalogModel['family'], string> = {
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `npm test -w @fortress-code/shared`
+Run: `npm test -w @fortress-chat/shared`
 Expected: PASS (catalog + policy).
 
 - [ ] **Step 7: Commit**
@@ -197,7 +197,7 @@ describe('embed api types', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w @fortress-code/shared -- api`
+Run: `npm test -w @fortress-chat/shared -- api`
 Expected: FAIL — types not exported.
 
 - [ ] **Step 3: Add the types**
@@ -223,7 +223,7 @@ Add one field to `StatusResponse`:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w @fortress-code/shared -- api`
+Run: `npm test -w @fortress-chat/shared -- api`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -269,7 +269,7 @@ describe('EmbedSupervisor.buildArgs', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w @fortress-code/manager -- embedSupervisor`
+Run: `npm test -w @fortress-chat/manager -- embedSupervisor`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `EmbedSupervisor`**
@@ -279,7 +279,7 @@ Create `packages/manager/src/embedSupervisor.ts` (mirrors `Supervisor` but embed
 ```ts
 import { spawn, ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
-import type { CatalogModel, ServerState } from '@fortress-code/shared';
+import type { CatalogModel, ServerState } from '@fortress-chat/shared';
 import { llamaServerPath } from './binary';
 
 const EMBED_CTX = 8192;
@@ -369,7 +369,7 @@ export class EmbedSupervisor {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w @fortress-code/manager -- embedSupervisor`
+Run: `npm test -w @fortress-chat/manager -- embedSupervisor`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -453,7 +453,7 @@ describe('POST /embed', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w @fortress-code/manager -- embed.test`
+Run: `npm test -w @fortress-chat/manager -- embed.test`
 Expected: FAIL — `ApiDeps` has no `embed`; `/embed` returns 404.
 
 - [ ] **Step 3: Extend `ApiDeps` and add routes**
@@ -461,7 +461,7 @@ Expected: FAIL — `ApiDeps` has no `embed`; `/embed` returns 404.
 In `packages/manager/src/httpApi.ts`: import types and `EmbedSupervisor`, add `embed` to `ApiDeps`, and add the routes. At the top:
 
 ```ts
-import type { ... , EmbedResponse } from '@fortress-code/shared';
+import type { ... , EmbedResponse } from '@fortress-chat/shared';
 import { EmbedSupervisor } from './embedSupervisor';
 ```
 
@@ -550,12 +550,12 @@ Also add `await deps.embed.stop();` in the existing `POST /shutdown` case in `ht
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `npm test -w @fortress-code/manager -- embed.test`
+Run: `npm test -w @fortress-chat/manager -- embed.test`
 Expected: PASS (vectors ordered `[[2,0],[3,1]]`).
 
 - [ ] **Step 6: Full manager suite + typecheck**
 
-Run: `npm test -w @fortress-code/manager && npm run build`
+Run: `npm test -w @fortress-chat/manager && npm run build`
 Expected: PASS; build succeeds (the `StatusResponse.embed` field now always supplied).
 
 - [ ] **Step 7: Commit**
@@ -609,7 +609,7 @@ describe('DaemonClient.embed', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w fortress-code -- embedClient`
+Run: `npm test -w fortress-chat -- embedClient`
 Expected: FAIL — `embed` not a function.
 
 - [ ] **Step 3: Implement the methods**
@@ -631,7 +631,7 @@ In `packages/extension/src/daemon.ts`, add to `class DaemonClient` (after `start
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w fortress-code -- embedClient`
+Run: `npm test -w fortress-chat -- embedClient`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -682,7 +682,7 @@ describe('chunkFile', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w fortress-code -- chunker`
+Run: `npm test -w fortress-chat -- chunker`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `chunkFile`**
@@ -710,7 +710,7 @@ export function chunkFile(text: string, windowLines = 50, overlap = 10): Chunk[]
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w fortress-code -- chunker`
+Run: `npm test -w fortress-chat -- chunker`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -778,7 +778,7 @@ describe('VectorStore', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w fortress-code -- store`
+Run: `npm test -w fortress-chat -- store`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `VectorStore`**
@@ -890,7 +890,7 @@ export class VectorStore {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w fortress-code -- store`
+Run: `npm test -w fortress-chat -- store`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -960,7 +960,7 @@ describe('indexWorkspace incremental', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w fortress-code -- indexer`
+Run: `npm test -w fortress-chat -- indexer`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `indexer.ts`**
@@ -1059,7 +1059,7 @@ Note: `filesToDrop` reads the store's private `chunks` deliberately to avoid wid
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w fortress-code -- indexer`
+Run: `npm test -w fortress-chat -- indexer`
 Expected: PASS (second run adds zero embed calls).
 
 - [ ] **Step 5: Commit**
@@ -1118,7 +1118,7 @@ describe('retrieve', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w fortress-code -- retriever`
+Run: `npm test -w fortress-chat -- retriever`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `retriever.ts`**
@@ -1149,7 +1149,7 @@ export function buildCodebaseBlock(hits: { file: string; startLine: number; endL
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w fortress-code -- retriever`
+Run: `npm test -w fortress-chat -- retriever`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1198,7 +1198,7 @@ describe('buildContextPreamble with codebase', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w fortress-code -- ragBlock`
+Run: `npm test -w fortress-chat -- ragBlock`
 Expected: FAIL — `codebase` not on `ChatContext`.
 
 - [ ] **Step 3: Extend `context.ts`**
@@ -1228,7 +1228,7 @@ import { buildCodebaseBlock } from './rag/retriever';
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w fortress-code -- ragBlock`
+Run: `npm test -w fortress-chat -- ragBlock`
 Expected: PASS.
 
 - [ ] **Step 5: Implement `RagService`**
@@ -1350,7 +1350,7 @@ Filter the synthetic `'codebase'` mention out of the file-mention loop so it is 
 
 - [ ] **Step 7: Run the extension suite + build**
 
-Run: `npm test -w fortress-code && npm run build`
+Run: `npm test -w fortress-chat && npm run build`
 Expected: PASS; build succeeds.
 
 - [ ] **Step 8: Commit**
@@ -1397,7 +1397,7 @@ describe('Debouncer', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w fortress-code -- watcher`
+Run: `npm test -w fortress-chat -- watcher`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `Debouncer`**
@@ -1424,7 +1424,7 @@ export class Debouncer {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w fortress-code -- watcher`
+Run: `npm test -w fortress-chat -- watcher`
 Expected: PASS.
 
 - [ ] **Step 5: Wire the watcher in `ChatViewProvider`**
@@ -1455,7 +1455,7 @@ Add the import `import { Debouncer } from '../rag/watcher';` and call `this.star
 
 - [ ] **Step 6: Run the extension suite + build**
 
-Run: `npm test -w fortress-code && npm run build`
+Run: `npm test -w fortress-chat && npm run build`
 Expected: PASS; build succeeds.
 
 - [ ] **Step 7: Commit**
@@ -1554,15 +1554,15 @@ git commit -m "feat(rag): webview index control, progress, and status"
 
 - [ ] **Step 1: Full test sweep**
 
-Run: `npm test -w @fortress-code/shared && npm test -w @fortress-code/manager && npm test -w fortress-code && npm run build`
+Run: `npm test -w @fortress-chat/shared && npm test -w @fortress-chat/manager && npm test -w fortress-chat && npm run build`
 Expected: all green; build succeeds.
 
 - [ ] **Step 2: Bump, package, install**
 
 ```bash
 node -e 'const fs=require("fs");const p="packages/extension/package.json";const j=JSON.parse(fs.readFileSync(p,"utf8"));const[a,b,c]=j.version.split(".").map(Number);j.version=`${a}.${b}.${c+1}`;fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n");console.log("version",j.version);'
-npm run package -w fortress-code
-"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --install-extension "$(pwd)/fortress-code.vsix" --force
+npm run package -w fortress-chat
+"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --install-extension "$(pwd)/fortress-chat.vsix" --force
 ```
 
 - [ ] **Step 3: Manual smoke (record result in the commit body)**

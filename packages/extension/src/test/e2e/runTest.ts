@@ -8,7 +8,7 @@ async function main(): Promise<void> {
   const extensionDevelopmentPath = path.resolve(__dirname, '../../..');
   const extensionTestsPath = path.resolve(__dirname, './suite/index');
   const testWorkspace = path.resolve(extensionDevelopmentPath, '../../fixtures/sample-app');
-  const tmp = path.join(os.tmpdir(), 'fortress-code-vscode-test');
+  const tmp = path.join(os.tmpdir(), 'fortress-chat-vscode-test');
 
   await runTests({
     extensionDevelopmentPath,

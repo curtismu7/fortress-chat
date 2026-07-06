@@ -1,7 +1,7 @@
-# Fortress Code — Model Governance + OpenRouter (design delta)
+# FortressChat — Model Governance + OpenRouter (design delta)
 
 **Status:** Approved (brainstorming session with Curtis, 2026-07-03)
-**Builds on:** `2026-07-02-fortress-code-design.md` and its implementation plan `../plans/2026-07-02-fortress-code-v1.md` (Tasks 1–12 complete: shared, full manager/daemon backend, extension scaffold).
+**Builds on:** `2026-07-02-fortress-chat-design.md` and its implementation plan `../plans/2026-07-02-fortress-chat-v1.md` (Tasks 1–12 complete: shared, full manager/daemon backend, extension scaffold).
 
 ## 1. Why this delta
 

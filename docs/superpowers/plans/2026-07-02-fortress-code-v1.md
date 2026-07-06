@@ -1,4 +1,4 @@
-# Fortress Code v1 Implementation Plan
+# FortressChat v1 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -6,13 +6,13 @@
 
 **Architecture:** npm-workspaces monorepo with three packages. `shared` holds the manager API contract, chat-message types, and the model catalog. `manager` is a detached Node daemon that owns llama-server lifecycle (one model at a time), the pre-flight memory guard, and resumable downloads; it serves a token-authenticated REST API on 127.0.0.1. `extension` is a thin client: chat webview, agent loop, and tools; inference streams directly from the extension host to llama-server's OpenAI API.
 
-**Tech Stack:** TypeScript 5 (strict), Node 20+, npm workspaces, zod (validation), vitest (tests), esbuild (bundling), @vscode/vsce (packaging). No express — `node:http` with manual routing. Spec: `docs/superpowers/specs/2026-07-02-fortress-code-design.md`.
+**Tech Stack:** TypeScript 5 (strict), Node 20+, npm workspaces, zod (validation), vitest (tests), esbuild (bundling), @vscode/vsce (packaging). No express — `node:http` with manual routing. Spec: `docs/superpowers/specs/2026-07-02-fortress-chat-design.md`.
 
 ## Global Constraints
 
 - Platform v1: **Apple Silicon macOS only** (darwin/arm64). Guard all platform-specific code behind checks so Windows/Linux can slot in later.
 - Pinned llama.cpp release: tag **`b9840`**, asset **`llama-b9840-bin-macos-arm64.zip`** from `https://github.com/ggml-org/llama.cpp/releases/download/b9840/`.
-- Data dir: `~/Library/Application Support/fortress-code/` (override with env `FC_DATA_DIR` for tests). Layout: `bin/` (llama-server), `models/`, `daemon.json` (pid+port+token, mode 0600), `daemon.log`.
+- Data dir: `~/Library/Application Support/fortress-chat/` (override with env `FC_DATA_DIR` for tests). Layout: `bin/` (llama-server), `models/`, `daemon.json` (pid+port+token, mode 0600), `daemon.log`.
 - Daemon API binds **127.0.0.1 only**; every request requires header `x-fc-token` matching the token in `daemon.json`.
 - **One managed llama-server at a time.** Default context length **8192** tokens. llama-server always started with `--jinja`.
 - Memory guard: required = catalog `memoryBytes` (already includes 8192-ctx KV) + **1.5 GiB** overhead; must leave **≥15%** of total RAM free after load. Available = (free + inactive + speculative pages) × pagesize from `vm_stat`.
@@ -27,7 +27,7 @@
 ## File Structure
 
 ```text
-fortress-code/
+fortress-chat/
 ├── package.json                     # workspaces root, scripts
 ├── tsconfig.base.json
 ├── .gitignore
@@ -96,7 +96,7 @@ fortress-code/
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `npm test` and `npm run build` work from repo root; `@fortress-code/shared` importable by other packages.
+- Produces: `npm test` and `npm run build` work from repo root; `@fortress-chat/shared` importable by other packages.
 
 - [ ] **Step 1: Write root config files**
 
@@ -104,7 +104,7 @@ fortress-code/
 
 ```json
 {
-  "name": "fortress-code",
+  "name": "fortress-chat",
   "private": true,
   "workspaces": ["packages/*"],
   "engines": { "node": ">=20" },
@@ -149,7 +149,7 @@ out/
 
 ```json
 {
-  "name": "@fortress-code/shared",
+  "name": "@fortress-chat/shared",
   "version": "0.1.0",
   "type": "commonjs",
   "main": "dist/index.js",
@@ -181,7 +181,7 @@ export const FORTRESS_CODE = true;
 
 - [ ] **Step 2: Install and verify build**
 
-Run: `cd /Users/cmuir/Development/fortress-code && npm install && npm run build`
+Run: `cd /Users/cmuir/Development/fortress-chat && npm install && npm run build`
 Expected: exit 0, `packages/shared/dist/index.js` exists.
 
 - [ ] **Step 3: Commit**
@@ -245,7 +245,7 @@ describe('validateHistory', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w @fortress-code/shared`
+Run: `npm test -w @fortress-chat/shared`
 Expected: FAIL — cannot resolve `../src/messages`.
 
 - [ ] **Step 3: Implement** (`packages/shared/src/messages.ts`)
@@ -289,7 +289,7 @@ export * from './messages';
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w @fortress-code/shared`
+Run: `npm test -w @fortress-chat/shared`
 Expected: 4 passing.
 
 - [ ] **Step 5: Commit**
@@ -351,7 +351,7 @@ describe('catalog', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w @fortress-code/shared`
+Run: `npm test -w @fortress-chat/shared`
 Expected: FAIL — cannot resolve `../src/catalog`.
 
 - [ ] **Step 3: Implement schema + API types**
@@ -464,7 +464,7 @@ export * from './api';
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w @fortress-code/shared`
+Run: `npm test -w @fortress-chat/shared`
 Expected: all catalog tests pass (SHA regex will fail until real values are pasted — that is the point; do not weaken the test).
 
 - [ ] **Step 5: Commit**
@@ -484,7 +484,7 @@ git commit -m "feat(shared): pinned US-only model catalog and manager API contra
 
 **Interfaces:**
 - Produces:
-  - `function dataDir(): string` — `$FC_DATA_DIR` if set, else `~/Library/Application Support/fortress-code`; creates it (recursive) on first call.
+  - `function dataDir(): string` — `$FC_DATA_DIR` if set, else `~/Library/Application Support/fortress-chat`; creates it (recursive) on first call.
   - `function binDir(): string`, `function modelsDir(): string` — subdirs, created on demand.
   - `interface DaemonInfo { pid: number; port: number; token: string }`
   - `function writeDaemonInfo(info: DaemonInfo): void` — writes `daemon.json` with mode 0600.
@@ -497,7 +497,7 @@ git commit -m "feat(shared): pinned US-only model catalog and manager API contra
 
 ```json
 {
-  "name": "@fortress-code/manager",
+  "name": "@fortress-chat/manager",
   "version": "0.1.0",
   "type": "commonjs",
   "main": "dist/index.js",
@@ -505,7 +505,7 @@ git commit -m "feat(shared): pinned US-only model catalog and manager API contra
     "build": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
-  "dependencies": { "@fortress-code/shared": "0.1.0", "zod": "^3.23.0" },
+  "dependencies": { "@fortress-chat/shared": "0.1.0", "zod": "^3.23.0" },
   "devDependencies": { "typescript": "^5.5.0", "vitest": "^2.0.0", "@types/node": "^20.0.0" }
 }
 ```
@@ -559,7 +559,7 @@ describe('paths', () => {
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `npm install && npm test -w @fortress-code/manager`
+Run: `npm install && npm test -w @fortress-chat/manager`
 Expected: FAIL — cannot resolve `../src/paths`.
 
 - [ ] **Step 4: Implement** (`packages/manager/src/paths.ts`)
@@ -577,7 +577,7 @@ function ensure(dir: string): string {
 }
 
 export function dataDir(): string {
-  return ensure(process.env.FC_DATA_DIR ?? join(homedir(), 'Library', 'Application Support', 'fortress-code'));
+  return ensure(process.env.FC_DATA_DIR ?? join(homedir(), 'Library', 'Application Support', 'fortress-chat'));
 }
 
 export function binDir(): string { return ensure(join(dataDir(), 'bin')); }
@@ -604,7 +604,7 @@ export function isProcessAlive(pid: number): boolean {
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `npm test -w @fortress-code/manager`
+Run: `npm test -w @fortress-chat/manager`
 Expected: 4 passing.
 
 - [ ] **Step 6: Commit**
@@ -667,7 +667,7 @@ describe('checkFit (64 GB machine)', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w @fortress-code/manager`
+Run: `npm test -w @fortress-chat/manager`
 Expected: FAIL — cannot resolve `../src/memory`.
 
 - [ ] **Step 3: Implement** (`packages/manager/src/memory.ts`)
@@ -705,7 +705,7 @@ export function checkFit(modelMemoryBytes: number, availableBytes: number, total
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w @fortress-code/manager`
+Run: `npm test -w @fortress-chat/manager`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -762,7 +762,7 @@ describe('parsePs', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w @fortress-code/manager`
+Run: `npm test -w @fortress-chat/manager`
 Expected: FAIL — module missing.
 
 - [ ] **Step 3: Implement** (`packages/manager/src/processes.ts`)
@@ -770,7 +770,7 @@ Expected: FAIL — module missing.
 ```ts
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { ForeignProcess } from '@fortress-code/shared';
+import type { ForeignProcess } from '@fortress-chat/shared';
 
 const execFileP = promisify(execFile);
 const PATTERN = /(llama-server\s+-m|llama serve\s+-m|llama-server\s+--|llama serve\s+--|llama-server\s+-hf|llama serve\s+-hf|ollama runner)/;
@@ -804,7 +804,7 @@ export function killPids(pids: number[]): { killed: number[]; failed: number[] }
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w @fortress-code/manager`
+Run: `npm test -w @fortress-chat/manager`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -881,7 +881,7 @@ describe('downloadFile', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w @fortress-code/manager`
+Run: `npm test -w @fortress-chat/manager`
 Expected: FAIL — module missing.
 
 - [ ] **Step 3: Implement** (`packages/manager/src/download.ts`)
@@ -934,7 +934,7 @@ export async function downloadFile(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w @fortress-code/manager`
+Run: `npm test -w @fortress-chat/manager`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
@@ -994,7 +994,7 @@ describe('binary', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w @fortress-code/manager`
+Run: `npm test -w @fortress-chat/manager`
 Expected: FAIL — module missing.
 
 - [ ] **Step 3: Implement** (`packages/manager/src/binary.ts`)
@@ -1062,7 +1062,7 @@ async function downloadNoHash(url: string, dest: string, approxBytes: number, on
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w @fortress-code/manager`
+Run: `npm test -w @fortress-chat/manager`
 Expected: PASS.
 
 - [ ] **Step 5: One-time manual verification of the real download** (needs network, ~30 MB)
@@ -1138,7 +1138,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Supervisor } from '../src/supervisor';
-import type { CatalogModel } from '@fortress-code/shared';
+import type { CatalogModel } from '@fortress-chat/shared';
 
 const STUB = join(__dirname, 'fixtures', 'stub-llama-server.mjs');
 const model: CatalogModel = {
@@ -1180,7 +1180,7 @@ describe('Supervisor', () => {
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `npm test -w @fortress-code/manager`
+Run: `npm test -w @fortress-chat/manager`
 Expected: FAIL — module missing.
 
 - [ ] **Step 4: Implement** (`packages/manager/src/supervisor.ts`)
@@ -1188,7 +1188,7 @@ Expected: FAIL — module missing.
 ```ts
 import { spawn, ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
-import type { CatalogModel, ServerState } from '@fortress-code/shared';
+import type { CatalogModel, ServerState } from '@fortress-chat/shared';
 import { llamaServerPath } from './binary';
 
 export const DEFAULT_CTX = 8192;
@@ -1290,7 +1290,7 @@ export class Supervisor {
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `npm test -w @fortress-code/manager`
+Run: `npm test -w @fortress-chat/manager`
 Expected: PASS (both supervisor tests, plus all earlier ones).
 
 - [ ] **Step 6: Commit**
@@ -1342,7 +1342,7 @@ import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { createApi } from '../src/httpApi';
 import { Supervisor } from '../src/supervisor';
-import { loadCatalog } from '@fortress-code/shared';
+import { loadCatalog } from '@fortress-chat/shared';
 
 const STUB = join(__dirname, 'fixtures', 'stub-llama-server.mjs');
 let server: ReturnType<typeof createApi>; let base: string;
@@ -1403,7 +1403,7 @@ describe('start with memory guard', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w @fortress-code/manager`
+Run: `npm test -w @fortress-chat/manager`
 Expected: FAIL — module missing.
 
 - [ ] **Step 3: Implement** (`packages/manager/src/httpApi.ts`)
@@ -1412,7 +1412,7 @@ Expected: FAIL — module missing.
 import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadCatalog, type CatalogModel, type StatusResponse, type StartRejection, type DownloadProgress, hfUrl } from '@fortress-code/shared';
+import { loadCatalog, type CatalogModel, type StatusResponse, type StartRejection, type DownloadProgress, hfUrl } from '@fortress-chat/shared';
 import { Supervisor } from './supervisor';
 import { modelsDir } from './paths';
 import { checkFit, totalRamBytes } from './memory';
@@ -1542,7 +1542,7 @@ export function createApi(deps: ApiDeps): Server {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w @fortress-code/manager`
+Run: `npm test -w @fortress-chat/manager`
 Expected: PASS. Note: the guard test relies on the injected `availableBytes` — no real `vm_stat` in tests.
 
 - [ ] **Step 5: Commit**
@@ -1617,7 +1617,7 @@ describe('daemon', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `npm run build && npm test -w @fortress-code/manager`
+Run: `npm run build && npm test -w @fortress-chat/manager`
 Expected: FAIL — `dist/index.js` missing.
 
 - [ ] **Step 3: Implement** (`packages/manager/src/index.ts`)
@@ -1675,7 +1675,7 @@ main().catch((e) => { log(`fatal: ${e}`); process.exit(1); });
 
 - [ ] **Step 4: Build and run tests**
 
-Run: `npm run build && npm test -w @fortress-code/manager`
+Run: `npm run build && npm test -w @fortress-chat/manager`
 Expected: all manager tests pass, including the three integration tests.
 
 - [ ] **Step 5: Commit**
@@ -1698,7 +1698,7 @@ git commit -m "feat(manager): daemon entry with singleton guard, token generatio
 - Produces:
   - `class DaemonClient { constructor(port: number, token: string); status(): Promise<StatusResponse>; catalog(): Promise<CatalogModel[]>; download(modelId): Promise<void>; installBinary(): Promise<void>; start(modelId): Promise<{ ok: true } | { ok: false; rejection: StartRejection }>; stop(): Promise<void>; foreignKill(pids: number[]): Promise<void>; shutdown(): Promise<void> }`
   - `async function ensureDaemon(managerEntryPath: string): Promise<DaemonClient>` — reads `daemon.json`; if stale/missing spawns `node <managerEntryPath>` detached (`stdio: 'ignore'`, `detached: true`, `unref()`), polls `daemon.json` + `/status` until live (10 s timeout).
-  - Extension activates on view `fortressCode.chat`; command `fortress-code.openChat`.
+  - Extension activates on view `fortressChat.chat`; command `fortress-chat.openChat`.
 
 - [ ] **Step 1: Write extension package files**
 
@@ -1706,27 +1706,27 @@ git commit -m "feat(manager): daemon entry with singleton guard, token generatio
 
 ```json
 {
-  "name": "fortress-code",
-  "displayName": "Fortress Code",
+  "name": "fortress-chat",
+  "displayName": "FortressChat",
   "description": "Local US-model chat + agent for VS Code. Memory-safe llama.cpp management built in.",
   "version": "0.1.0",
   "publisher": "coachcurtis",
-  "repository": { "type": "git", "url": "https://github.com/curtismuir/fortress-code" },
+  "repository": { "type": "git", "url": "https://github.com/curtismuir/fortress-chat" },
   "engines": { "vscode": "^1.90.0" },
   "categories": ["AI", "Chat"],
   "main": "./out/extension.js",
   "activationEvents": [],
   "contributes": {
-    "viewsContainers": { "activitybar": [{ "id": "fortress-code", "title": "Fortress Code", "icon": "media/icon.svg" }] },
-    "views": { "fortress-code": [{ "type": "webview", "id": "fortressCode.chat", "name": "Chat" }] },
-    "commands": [{ "command": "fortress-code.openChat", "title": "Fortress Code: Open Chat" }]
+    "viewsContainers": { "activitybar": [{ "id": "fortress-chat", "title": "FortressChat", "icon": "media/icon.svg" }] },
+    "views": { "fortress-chat": [{ "type": "webview", "id": "fortressChat.chat", "name": "Chat" }] },
+    "commands": [{ "command": "fortress-chat.openChat", "title": "FortressChat: Open Chat" }]
   },
   "scripts": {
     "build": "node esbuild.mjs && tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "package": "vsce package --no-dependencies -o ../../fortress-code.vsix"
+    "package": "vsce package --no-dependencies -o ../../fortress-chat.vsix"
   },
-  "dependencies": { "@fortress-code/shared": "0.1.0" },
+  "dependencies": { "@fortress-chat/shared": "0.1.0" },
   "devDependencies": {
     "typescript": "^5.5.0", "vitest": "^2.0.0", "@types/node": "^20.0.0",
     "@types/vscode": "^1.90.0", "esbuild": "^0.23.0", "@vscode/vsce": "^3.0.0"
@@ -1821,7 +1821,7 @@ describe('DaemonClient', () => {
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `npm install && npm test -w fortress-code`
+Run: `npm install && npm test -w fortress-chat`
 Expected: FAIL — `../daemon` missing.
 
 - [ ] **Step 4: Implement `daemon.ts` and `extension.ts`**
@@ -1833,10 +1833,10 @@ import { spawn } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { CatalogModel, StatusResponse, StartRejection } from '@fortress-code/shared';
+import type { CatalogModel, StatusResponse, StartRejection } from '@fortress-chat/shared';
 
 function dataDir(): string {
-  return process.env.FC_DATA_DIR ?? join(homedir(), 'Library', 'Application Support', 'fortress-code');
+  return process.env.FC_DATA_DIR ?? join(homedir(), 'Library', 'Application Support', 'fortress-chat');
 }
 
 interface DaemonInfo { pid: number; port: number; token: string }
@@ -1893,7 +1893,7 @@ export async function ensureDaemon(managerEntryPath: string): Promise<DaemonClie
     if (info && (await alive(info))) return new DaemonClient(info.port, info.token);
     await new Promise((r) => setTimeout(r, 200));
   }
-  throw new Error('daemon did not start within 10s (see daemon.log in the Fortress Code data folder)');
+  throw new Error('daemon did not start within 10s (see daemon.log in the FortressChat data folder)');
 }
 ```
 
@@ -1909,9 +1909,9 @@ export function activate(context: vscode.ExtensionContext): void {
   const managerEntry = join(context.extensionPath, 'out', 'manager', 'index.js');
   const provider = new ChatViewProvider(context, () => ensureDaemon(managerEntry));
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('fortressCode.chat', provider),
-    vscode.commands.registerCommand('fortress-code.openChat', () =>
-      vscode.commands.executeCommand('fortressCode.chat.focus')),
+    vscode.window.registerWebviewViewProvider('fortressChat.chat', provider),
+    vscode.commands.registerCommand('fortress-chat.openChat', () =>
+      vscode.commands.executeCommand('fortressChat.chat.focus')),
   );
 }
 
@@ -1922,7 +1922,7 @@ export function deactivate(): void {}
 
 - [ ] **Step 5: Run tests**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: 2 passing.
 
 - [ ] **Step 6: Commit**
@@ -2032,7 +2032,7 @@ describe('streamChat', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: FAIL — modules missing.
 
 - [ ] **Step 3: Implement session + stream**
@@ -2041,9 +2041,9 @@ Expected: FAIL — modules missing.
 
 ```ts
 import type { Memento } from 'vscode';
-import { validateHistory, type ChatMessage } from '@fortress-code/shared';
+import { validateHistory, type ChatMessage } from '@fortress-chat/shared';
 
-const KEY = 'fortressCode.session';
+const KEY = 'fortressChat.session';
 
 export class Session {
   messages: ChatMessage[] = [];
@@ -2070,7 +2070,7 @@ export class Session {
 `packages/extension/src/chat/stream.ts`:
 
 ```ts
-import type { ChatMessage } from '@fortress-code/shared';
+import type { ChatMessage } from '@fortress-chat/shared';
 
 export class WatchdogError extends Error {}
 
@@ -2125,7 +2125,7 @@ export async function streamChat(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: session + stream tests pass.
 
 - [ ] **Step 5: Implement the view provider and webview assets**
@@ -2136,13 +2136,13 @@ Expected: session + stream tests pass.
 import * as vscode from 'vscode';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { StatusResponse } from '@fortress-code/shared';
+import type { StatusResponse } from '@fortress-chat/shared';
 import { DaemonClient } from '../daemon';
 import { Session } from './session';
 import { streamChat } from './stream';
 import { runAgentTurn } from '../agent/loop';
 
-const SYSTEM_PROMPT = 'You are Fortress Code, a helpful local coding assistant running fully on this machine.';
+const SYSTEM_PROMPT = 'You are FortressChat, a helpful local coding assistant running fully on this machine.';
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | null = null;
@@ -2180,7 +2180,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.context.subscriptions.push({ dispose: () => this.poller && clearInterval(this.poller) });
       await this.pushStatus();
     } catch (e) {
-      this.banner(`Could not start the Fortress Code daemon: ${e}`);
+      this.banner(`Could not start the FortressChat daemon: ${e}`);
     }
   }
 
@@ -2316,7 +2316,7 @@ function renderState(status) {
   if (!status.binaryInstalled) {
     setup.hidden = false;
     const gb = Math.round(status.ram.totalBytes / 2 ** 30);
-    setup.innerHTML = `<h3>Welcome to Fortress Code</h3>
+    setup.innerHTML = `<h3>Welcome to FortressChat</h3>
       <p>This Mac has ${gb} GB RAM. One click sets up the local engine and a recommended model.</p>
       <button id="do-setup">Set up</button>`;
     document.getElementById('do-setup').onclick = () => vscode.postMessage({ type: 'installBinary' });
@@ -2429,7 +2429,7 @@ this.post({ type: 'catalog', models: await this.client.catalog() });
 
 - [ ] **Step 6: Build + manual smoke test**
 
-Run: `npm run build -w fortress-code`, then open `packages/extension` in VS Code, press F5 (Extension Development Host), open the Fortress Code view.
+Run: `npm run build -w fortress-chat`, then open `packages/extension` in VS Code, press F5 (Extension Development Host), open the FortressChat view.
 Expected: setup screen appears (binary not installed) OR model picker if your data dir already has state; sending with no ready model shows the banner and restores your text into the input box — **not** into the history.
 
 - [ ] **Step 7: Commit**
@@ -2480,7 +2480,7 @@ describe('TOOL_SCHEMAS', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: FAIL — module missing.
 
 - [ ] **Step 3: Implement** (`packages/extension/src/agent/tools.ts`)
@@ -2610,7 +2610,7 @@ export default defineConfig({ resolve: { alias: { vscode: resolve(__dirname, 'sr
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -2699,14 +2699,14 @@ describe('runAgentTurn', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: FAIL — stub throws / exports missing.
 
 - [ ] **Step 3: Implement** (`packages/extension/src/agent/loop.ts`)
 
 ```ts
 import * as vscode from 'vscode';
-import type { ChatMessage, ToolCall } from '@fortress-code/shared';
+import type { ChatMessage, ToolCall } from '@fortress-chat/shared';
 import { TOOL_SCHEMAS, executeTool } from './tools';
 import type { Session } from '../chat/session';
 
@@ -2768,7 +2768,7 @@ export async function runAgentTurn(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Wire the toolCalling gate**
@@ -2785,7 +2785,7 @@ if (agentEl.disabled) { agentEl.checked = false; }
 
 - [ ] **Step 6: Build + manual verification in Extension Development Host**
 
-Run: `npm run build -w fortress-code`, F5, with a small downloaded model (or the stub via `FC_LLAMA_BIN`).
+Run: `npm run build -w fortress-chat`, F5, with a small downloaded model (or the stub via `FC_LLAMA_BIN`).
 Expected: agent toggle disabled for non-tool models; with a tool model, "create a file named hello.txt containing hi" produces an `edit_file` step, a diff opens, Apply writes the file, Reject does not.
 
 - [ ] **Step 7: Commit**
@@ -2838,15 +2838,15 @@ jobs:
         with: { node-version: 20, cache: npm }
       - run: npm ci
       - run: npm run build
-      - run: npm run package -w fortress-code
+      - run: npm run package -w fortress-chat
       - uses: softprops/action-gh-release@v2
-        with: { files: fortress-code.vsix }
+        with: { files: fortress-chat.vsix }
 ```
 
 - [ ] **Step 2: Write README.md**
 
 ```markdown
-# Fortress Code
+# FortressChat
 
 Local AI chat + coding agent for VS Code. US-origin open models only
 (Google Gemma 3, OpenAI gpt-oss), running fully on your machine via llama.cpp
@@ -2866,9 +2866,9 @@ Local AI chat + coding agent for VS Code. US-origin open models only
 
 ## Install
 
-1. Download `fortress-code.vsix` from the latest GitHub Release.
+1. Download `fortress-chat.vsix` from the latest GitHub Release.
 2. VS Code → Extensions panel → `…` menu → **Install from VSIX…**
-3. Open the Fortress Code icon in the activity bar and click **Set up**.
+3. Open the FortressChat icon in the activity bar and click **Set up**.
 
 Requirements: Apple Silicon Mac, macOS 13+, VS Code 1.90+. (Windows/Linux
 planned.)
@@ -2888,18 +2888,18 @@ Design docs: `docs/superpowers/specs/`.
 - [ ] **Step 3: Create the GitHub repo and push**
 
 ```bash
-cd /Users/cmuir/Development/fortress-code
+cd /Users/cmuir/Development/fortress-chat
 git add .github README.md
 git commit -m "chore: CI workflow (test + vsix release) and README"
-gh repo create fortress-code --public --source . --push
+gh repo create fortress-chat --public --source . --push
 ```
 
 Expected: repo visible on GitHub, `ci` workflow green on main.
 
 - [ ] **Step 4: Verify packaging locally**
 
-Run: `npm run package -w fortress-code`
-Expected: `fortress-code.vsix` created at repo root; installs cleanly via "Install from VSIX".
+Run: `npm run package -w fortress-chat`
+Expected: `fortress-chat.vsix` created at repo root; installs cleanly via "Install from VSIX".
 
 - [ ] **Step 5: Commit any packaging fixes**
 
@@ -2918,21 +2918,21 @@ git add -u && git commit -m "fix: packaging adjustments" && git push
 - [ ] **Step 1: Fresh-install first run**
 
 ```bash
-rm -rf ~/Library/Application\ Support/fortress-code
+rm -rf ~/Library/Application\ Support/fortress-chat
 ```
 
-Install the `.vsix` in regular VS Code. Open Fortress Code panel.
+Install the `.vsix` in regular VS Code. Open FortressChat panel.
 Expected (**success criterion 1**): Setup screen shows "This Mac has 64 GB RAM"; clicking **Set up**, then downloading the recommended model, then first chat = **≤3 clicks**, no terminal, no settings.json.
 
 - [ ] **Step 2: Memory-pressure scenario (the 2026-07-02 pileup, on purpose)**
 
-Start the AI-DEMO2 tier: `llama-server` on ports 8091–94 plus the 70B on 8009 (as on 2026-07-02). In Fortress Code, try to start `gemma-3-27b-qat`.
+Start the AI-DEMO2 tier: `llama-server` on ports 8091–94 plus the 70B on 8009 (as on 2026-07-02). In FortressChat, try to start `gemma-3-27b-qat`.
 Expected (**success criterion 2**): start is rejected — panel lists the foreign llama processes with sizes and offers "Stop these and continue"; clicking it stops them and the model then loads. Nothing is killed without the click.
 
 - [ ] **Step 3: Crash resilience**
 
 While a reply streams, `kill -9` the managed llama-server pid (get it from `ps aux | grep llama-server`).
-Expected (**success criterion 3**): banner reports the crash with last log lines and a restart path; chat history intact; next send after restart works. History in `workspaceState` never contains a role-less entry (verify: Developer Tools → `fortressCode.session`).
+Expected (**success criterion 3**): banner reports the crash with last log lines and a restart path; chat history intact; next send after restart works. History in `workspaceState` never contains a role-less entry (verify: Developer Tools → `fortressChat.session`).
 
 - [ ] **Step 4: Agent multi-file edit**
 

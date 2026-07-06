@@ -1,8 +1,8 @@
-# Fortress Code — Design Spec
+# FortressChat — Design Spec
 
 **Date:** 2026-07-02
 **Status:** Approved (brainstorming session with Curtis)
-**Repo:** brand-new public GitHub repository (`fortress-code`, working title)
+**Repo:** brand-new public GitHub repository (`fortress-chat`, working title)
 
 ## 1. Problem & Goals
 
@@ -44,7 +44,7 @@ agent, marketplace listing, non-macOS platforms.
 Monorepo with two runtime components and a shared contract package.
 
 ```text
-fortress-code/
+fortress-chat/
 ├── packages/
 │   ├── manager/        # background daemon: server lifecycle, memory guard, downloads
 │   ├── extension/      # VS Code extension: chat UI, agent loop, tools
@@ -59,7 +59,7 @@ A single background process that owns everything heavy:
 
 - Downloads/updates the **pinned `llama-server` binary** (official llama.cpp
   GitHub release, macOS arm64) and **GGUF models** into
-  `~/Library/Application Support/fortress-code/`.
+  `~/Library/Application Support/fortress-chat/`.
 - Spawns and supervises **exactly one llama-server at a time** (one-model
   policy), health-checks it, detects crashes, restarts on demand.
 - Enforces the **pre-flight memory check** (§4) and provides the **foreign

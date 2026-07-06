@@ -1,12 +1,12 @@
-# Fortress Code — Governance + OpenRouter Implementation Plan
+# FortressChat — Governance + OpenRouter Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an enforced US-only model-governance layer and a co-equal OpenRouter cloud provider to Fortress Code, then build the extension's chat + agent surface on top of a "one governed gallery" UI — extension-side only; the manager daemon is untouched.
+**Goal:** Add an enforced US-only model-governance layer and a co-equal OpenRouter cloud provider to FortressChat, then build the extension's chat + agent surface on top of a "one governed gallery" UI — extension-side only; the manager daemon is untouched.
 
 **Architecture:** A single governed registry in `packages/shared` (`policy.ts` + `governance.ts`) is the source of truth for "is this model US-approved". The extension resolves every chat/agent request to a `ResolvedTarget` via `resolveTarget(entry, deps)`, which calls `assertAllowed(entry)` first (fail-closed) and then builds a local (llama-server) or OpenRouter request. OpenRouter requests pin US inference providers with `allow_fallbacks:false`. The OpenRouter key lives in VS Code SecretStorage. The webview is a governed gallery: provider toggle, per-provider requirements, model cards with governance badges, and a gated add-model flow.
 
-**Tech Stack:** TypeScript 5 (strict), Node 20+, npm workspaces, zod, vitest, esbuild, @vscode/vsce. Extension host + framework-free webview. Continues the monorepo from `2026-07-02-fortress-code-v1.md` (Tasks 1–12 complete).
+**Tech Stack:** TypeScript 5 (strict), Node 20+, npm workspaces, zod, vitest, esbuild, @vscode/vsce. Extension host + framework-free webview. Continues the monorepo from `2026-07-02-fortress-chat-v1.md` (Tasks 1–12 complete).
 
 ## Global Constraints
 
@@ -17,10 +17,10 @@
 - **OpenRouter key** stored ONLY in `context.secrets` (VS Code SecretStorage). Never written to disk, `daemon.json`, or workspaceState; never sent anywhere but `openrouter.ai`.
 - **Daemon stays local-only.** The extension calls OpenRouter directly (as it already calls local llama-server directly).
 - **Chat history** entries MUST validate as `{role, content}` via the existing `validateHistory`; errors are never appended to history.
-- **Dependencies:** no new runtime npm deps beyond `@fortress-code/shared` and what Tasks 1–12 already declared. Node 20+ builtins + browser-standard `fetch` only.
+- **Dependencies:** no new runtime npm deps beyond `@fortress-chat/shared` and what Tasks 1–12 already declared. Node 20+ builtins + browser-standard `fetch` only.
 - **Commit trailer:** every commit ends with `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
 - **TDD:** logic tasks start with a failing test; webview/UI steps use the stated manual checks.
-- Work from `/Users/cmuir/Development/fortress-code-v1`. Stage files explicitly (never `git add -A`); confirm `git branch --show-current` is `feat/v1` before each commit.
+- Work from `/Users/cmuir/Development/fortress-chat-v1`. Stage files explicitly (never `git add -A`); confirm `git branch --show-current` is `feat/v1` before each commit.
 
 ## File Structure
 
@@ -113,7 +113,7 @@ describe('assertAllowed', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `npm test -w @fortress-code/shared`
+Run: `npm test -w @fortress-chat/shared`
 Expected: FAIL — cannot resolve `../src/governance`.
 
 - [ ] **Step 3: Implement the guard** (`packages/shared/src/governance.ts`)
@@ -163,7 +163,7 @@ export function assertAllowed(e: PolicyEntry): void {
 
 - [ ] **Step 4: Run governance test to verify it passes**
 
-Run: `npm test -w @fortress-code/shared`
+Run: `npm test -w @fortress-chat/shared`
 Expected: governance tests PASS.
 
 - [ ] **Step 5: Write the failing policy test** (`packages/shared/test/policy.test.ts`)
@@ -217,7 +217,7 @@ describe('policy registry', () => {
 
 - [ ] **Step 6: Run to verify it fails**
 
-Run: `npm test -w @fortress-code/shared`
+Run: `npm test -w @fortress-chat/shared`
 Expected: FAIL — cannot resolve `../src/policy`.
 
 - [ ] **Step 7: Implement the registry** (`packages/shared/src/policy.ts`)
@@ -309,7 +309,7 @@ export * from './policy';
 
 - [ ] **Step 8: Run all shared tests to verify they pass**
 
-Run: `npm test -w @fortress-code/shared`
+Run: `npm test -w @fortress-chat/shared`
 Expected: all shared tests PASS (governance + policy + prior catalog/messages).
 
 - [ ] **Step 9: Commit**
@@ -330,7 +330,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Test: `packages/extension/src/test/session.test.ts`, `packages/extension/src/test/target.test.ts`, `packages/extension/src/test/stream.test.ts`
 
 **Interfaces:**
-- Consumes: `validateHistory`, `ChatMessage`, `PolicyEntry`, `assertAllowed` from `@fortress-code/shared`.
+- Consumes: `validateHistory`, `ChatMessage`, `PolicyEntry`, `assertAllowed` from `@fortress-chat/shared`.
 - Produces:
   - `class Session { messages: ChatMessage[]; addUser(t); addAssistant(t); addToolExchange(a, results); clear(); toRequestMessages(systemPrompt): ChatMessage[]; save(state); static load(state): Session }`
   - `interface TargetDeps { localEndpoint?: string; openRouterKey?: string }`
@@ -364,7 +364,7 @@ describe('Session', () => {
   });
 
   it('drops a poisoned persisted history rather than throwing', () => {
-    const store = new Map<string, unknown>([['fortressCode.session', [{ content: 'Request failed with status code 503' }]]]);
+    const store = new Map<string, unknown>([['fortressChat.session', [{ content: 'Request failed with status code 503' }]]]);
     const memento = { get: (k: string) => store.get(k), update: () => Promise.resolve() } as any;
     expect(Session.load(memento).messages).toEqual([]);
   });
@@ -373,16 +373,16 @@ describe('Session', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: FAIL — cannot resolve `../chat/session`.
 
 - [ ] **Step 3: Implement session** (`packages/extension/src/chat/session.ts`)
 
 ```ts
 import type { Memento } from 'vscode';
-import { validateHistory, type ChatMessage } from '@fortress-code/shared';
+import { validateHistory, type ChatMessage } from '@fortress-chat/shared';
 
-const KEY = 'fortressCode.session';
+const KEY = 'fortressChat.session';
 
 export class Session {
   messages: ChatMessage[] = [];
@@ -408,7 +408,7 @@ export class Session {
 
 - [ ] **Step 4: Run session test to verify it passes**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: session tests PASS.
 
 - [ ] **Step 5: Write the failing target test** (`packages/extension/src/test/target.test.ts`)
@@ -416,7 +416,7 @@ Expected: session tests PASS.
 ```ts
 import { describe, it, expect } from 'vitest';
 import { resolveTarget } from '../providers/target';
-import { PolicyViolationError, type PolicyEntry } from '@fortress-code/shared';
+import { PolicyViolationError, type PolicyEntry } from '@fortress-chat/shared';
 
 const localEntry: PolicyEntry = {
   id: 'gpt-oss-20b', displayName: 'gpt-oss', provider: 'local', agentCapable: true,
@@ -447,13 +447,13 @@ describe('resolveTarget (local)', () => {
 
 - [ ] **Step 6: Run to verify it fails**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: FAIL — cannot resolve `../providers/target`.
 
 - [ ] **Step 7: Implement target (local branch)** (`packages/extension/src/providers/target.ts`)
 
 ```ts
-import { assertAllowed, type PolicyEntry } from '@fortress-code/shared';
+import { assertAllowed, type PolicyEntry } from '@fortress-chat/shared';
 
 export interface TargetDeps {
   localEndpoint?: string;   // http://127.0.0.1:PORT from daemon status, when a local model is ready
@@ -486,7 +486,7 @@ export function resolveTarget(entry: PolicyEntry, deps: TargetDeps): ResolvedTar
 
 - [ ] **Step 8: Run target test to verify it passes**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: local target tests PASS (the disallowed-entry and missing-endpoint cases too).
 
 - [ ] **Step 9: Write the failing stream test** (`packages/extension/src/test/stream.test.ts`)
@@ -536,13 +536,13 @@ describe('streamChat', () => {
 
 - [ ] **Step 10: Run to verify it fails**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: FAIL — cannot resolve `../providers/stream`.
 
 - [ ] **Step 11: Implement stream** (`packages/extension/src/providers/stream.ts`)
 
 ```ts
-import type { ChatMessage } from '@fortress-code/shared';
+import type { ChatMessage } from '@fortress-chat/shared';
 import type { ResolvedTarget } from './target';
 
 export class WatchdogError extends Error {}
@@ -598,7 +598,7 @@ export async function streamChat(
 
 - [ ] **Step 12: Run all extension tests to verify they pass**
 
-Run: `npm run build -w @fortress-code/shared && npm test -w fortress-code`
+Run: `npm run build -w @fortress-chat/shared && npm test -w fortress-chat`
 Expected: session + target + stream + prior daemon tests PASS.
 
 - [ ] **Step 13: Commit**
@@ -620,15 +620,15 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Test: `packages/extension/src/test/target.test.ts` (add OpenRouter cases)
 
 **Interfaces:**
-- Consumes: `PolicyEntry`, `assertAllowed`, `PolicyViolationError` from `@fortress-code/shared`.
+- Consumes: `PolicyEntry`, `assertAllowed`, `PolicyViolationError` from `@fortress-chat/shared`.
 - Produces:
   - `resolveTarget` now handles `provider === 'openrouter'`: builds `url = 'https://openrouter.ai/api/v1/chat/completions'`, `headers.authorization = 'Bearer <key>'`, `model = entry.openrouter.slug`, `bodyExtra.provider = { only: entry.hosting.usProviders, allow_fallbacks: false, data_collection: 'deny' }`. Throws if key missing.
-  - `secrets.ts`: `const OPENROUTER_KEY_ID = 'fortressCode.openRouterKey'`, `async function getOpenRouterKey(secrets: vscode.SecretStorage): Promise<string | undefined>`, `async function setOpenRouterKey(secrets: vscode.SecretStorage, key: string): Promise<void>`, `async function clearOpenRouterKey(secrets: vscode.SecretStorage): Promise<void>`.
+  - `secrets.ts`: `const OPENROUTER_KEY_ID = 'fortressChat.openRouterKey'`, `async function getOpenRouterKey(secrets: vscode.SecretStorage): Promise<string | undefined>`, `async function setOpenRouterKey(secrets: vscode.SecretStorage, key: string): Promise<void>`, `async function clearOpenRouterKey(secrets: vscode.SecretStorage): Promise<void>`.
 
 - [ ] **Step 1: Add the failing OpenRouter target tests** (append to `packages/extension/src/test/target.test.ts`)
 
 ```ts
-import { PolicyViolationError as PVE } from '@fortress-code/shared';
+import { PolicyViolationError as PVE } from '@fortress-chat/shared';
 
 const orEntry = {
   id: 'or-gpt-4o', displayName: 'GPT-4o', provider: 'openrouter', agentCapable: true,
@@ -659,7 +659,7 @@ describe('resolveTarget (openrouter)', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: FAIL — OpenRouter branch throws `Unsupported provider`.
 
 - [ ] **Step 3: Add the OpenRouter branch to `resolveTarget`** (`packages/extension/src/providers/target.ts`)
@@ -675,8 +675,8 @@ Replace the final `throw new Error(\`Unsupported provider: ${entry.provider}\`);
     headers: {
       'content-type': 'application/json',
       authorization: `Bearer ${deps.openRouterKey}`,
-      'http-referer': 'https://github.com/curtismuir/fortress-code',
-      'x-title': 'Fortress Code',
+      'http-referer': 'https://github.com/curtismuir/fortress-chat',
+      'x-title': 'FortressChat',
     },
     bodyExtra: {
       provider: { only: entry.hosting.usProviders, allow_fallbacks: false, data_collection: 'deny' },
@@ -689,7 +689,7 @@ Replace the final `throw new Error(\`Unsupported provider: ${entry.provider}\`);
 
 - [ ] **Step 4: Run target tests to verify they pass**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: all target tests (local + openrouter) PASS.
 
 - [ ] **Step 5: Implement the SecretStorage wrapper** (`packages/extension/src/secrets.ts`)
@@ -697,7 +697,7 @@ Expected: all target tests (local + openrouter) PASS.
 ```ts
 import type { SecretStorage } from 'vscode';
 
-export const OPENROUTER_KEY_ID = 'fortressCode.openRouterKey';
+export const OPENROUTER_KEY_ID = 'fortressChat.openRouterKey';
 
 export function getOpenRouterKey(secrets: SecretStorage): Promise<string | undefined> {
   return Promise.resolve(secrets.get(OPENROUTER_KEY_ID));
@@ -714,7 +714,7 @@ export async function clearOpenRouterKey(secrets: SecretStorage): Promise<void> 
 
 - [ ] **Step 6: Build to confirm types**
 
-Run: `npm run build -w @fortress-code/shared && npm run build -w fortress-code`
+Run: `npm run build -w @fortress-chat/shared && npm run build -w fortress-chat`
 Expected: esbuild produces both bundles; `tsc --noEmit` clean.
 
 - [ ] **Step 7: Commit**
@@ -798,7 +798,7 @@ describe('TOOL_SCHEMAS', () => {
 
 - [ ] **Step 3: Run to verify it fails**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: FAIL — cannot resolve `../agent/tools`.
 
 - [ ] **Step 4: Implement** (`packages/extension/src/agent/tools.ts`)
@@ -902,7 +902,7 @@ export async function executeTool(name: string, args: any, workspaceRoot: string
 
 - [ ] **Step 5: Run to verify it passes**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: tools tests PASS; vitest does not load the real `vscode`.
 
 - [ ] **Step 6: Commit**
@@ -994,14 +994,14 @@ describe('runAgentTurn', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: FAIL — cannot resolve `../agent/loop`.
 
 - [ ] **Step 3: Implement** (`packages/extension/src/agent/loop.ts`)
 
 ```ts
 import * as vscode from 'vscode';
-import type { ChatMessage, ToolCall } from '@fortress-code/shared';
+import type { ChatMessage, ToolCall } from '@fortress-chat/shared';
 import { TOOL_SCHEMAS, executeTool } from './tools';
 import type { Session } from '../chat/session';
 import type { ResolvedTarget } from '../providers/target';
@@ -1064,7 +1064,7 @@ export async function runAgentTurn(
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `npm test -w fortress-code`
+Run: `npm test -w fortress-chat`
 Expected: loop tests PASS (3).
 
 - [ ] **Step 5: Commit**
@@ -1096,7 +1096,7 @@ This is a UI task: the logic it uses (governance, providers, session, agent loop
 import * as vscode from 'vscode';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadPolicy, localEntries, explainBlock, type PolicyEntry, type StatusResponse } from '@fortress-code/shared';
+import { loadPolicy, localEntries, explainBlock, type PolicyEntry, type StatusResponse } from '@fortress-chat/shared';
 import { DaemonClient } from '../daemon';
 import { Session } from './session';
 import { resolveTarget } from '../providers/target';
@@ -1104,7 +1104,7 @@ import { streamChat } from '../providers/stream';
 import { runAgentTurn } from '../agent/loop';
 import { getOpenRouterKey, setOpenRouterKey } from '../secrets';
 
-const SYSTEM_PROMPT = 'You are Fortress Code, a helpful local coding assistant.';
+const SYSTEM_PROMPT = 'You are FortressChat, a helpful local coding assistant.';
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | null = null;
@@ -1146,7 +1146,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.context.subscriptions.push({ dispose: () => this.poller && clearInterval(this.poller) });
       await this.pushStatus();
     } catch (e) {
-      this.banner(`Could not start the Fortress Code daemon: ${e}`);
+      this.banner(`Could not start the FortressChat daemon: ${e}`);
     }
   }
 
@@ -1356,7 +1356,7 @@ function renderState(status) {
   if (provider === 'local' && !status.binaryInstalled) {
     setup.hidden = false;
     const gb = Math.round(status.ram.totalBytes / 2 ** 30);
-    setup.innerHTML = `<b>Welcome to Fortress Code</b><p>This Mac has ${gb} GB RAM. One click installs the local engine.</p><button id="do-setup">Set up local engine</button>`;
+    setup.innerHTML = `<b>Welcome to FortressChat</b><p>This Mac has ${gb} GB RAM. One click installs the local engine.</p><button id="do-setup">Set up local engine</button>`;
     $('do-setup').onclick = () => vscode.postMessage({ type: 'installBinary' });
   } else if (status.download) {
     setup.hidden = false;
@@ -1441,12 +1441,12 @@ $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shif
 
 - [ ] **Step 5: Build**
 
-Run: `npm run build -w @fortress-code/shared && npm run build -w fortress-code`
+Run: `npm run build -w @fortress-chat/shared && npm run build -w fortress-chat`
 Expected: esbuild produces both bundles; `tsc --noEmit` clean.
 
 - [ ] **Step 6: Manual smoke test (Extension Development Host)**
 
-Open `packages/extension` in VS Code, press F5, open the Fortress Code view. Verify:
+Open `packages/extension` in VS Code, press F5, open the FortressChat view. Verify:
 - **Local tab:** setup screen appears if the engine isn't installed; model cards show 🇺🇸 US badges + on-device + agent + ready/download; selecting a downloaded model that fits starts it and enables Send.
 - **OpenRouter tab:** the amber "leaves your machine" banner shows; an API-key field appears until a key is saved; approved US models list with "US providers pinned"; **pasting `deepseek/deepseek-chat` into Add → a Blocked-by-policy card with the China reason**; sending with no model shows a banner and restores the input (never into history).
 - Governance: no non-US model is ever selectable or addable.
@@ -1474,10 +1474,10 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Extend the root build to include the extension**
 
-In root `package.json`, change the `build` script (currently `npm run build -w @fortress-code/shared && npm run build -w @fortress-code/manager`) to:
+In root `package.json`, change the `build` script (currently `npm run build -w @fortress-chat/shared && npm run build -w @fortress-chat/manager`) to:
 
 ```json
-"build": "npm run build -w @fortress-code/shared && npm run build -w @fortress-code/manager && npm run build -w fortress-code"
+"build": "npm run build -w @fortress-chat/shared && npm run build -w @fortress-chat/manager && npm run build -w fortress-chat"
 ```
 
 - [ ] **Step 2: Commit lockfile + gitignore hygiene**
@@ -1523,15 +1523,15 @@ jobs:
         with: { node-version: 20, cache: npm }
       - run: npm ci
       - run: npm run build
-      - run: npm run package -w fortress-code
+      - run: npm run package -w fortress-chat
       - uses: softprops/action-gh-release@v2
-        with: { files: fortress-code.vsix }
+        with: { files: fortress-chat.vsix }
 ```
 
 - [ ] **Step 4: Write README.md**
 
 ```markdown
-# Fortress Code
+# FortressChat
 
 Local + US-governed AI chat and coding agent for VS Code. Run models fully on
 your machine via llama.cpp, or use approved US models through OpenRouter — with
@@ -1555,7 +1555,7 @@ is blocked with a plain-language reason. See
 
 ## Install
 
-Download `fortress-code.vsix` from the latest Release → VS Code Extensions →
+Download `fortress-chat.vsix` from the latest Release → VS Code Extensions →
 Install from VSIX. Requirements: Apple Silicon Mac, macOS 13+, VS Code 1.90+.
 
 ## Development
@@ -1567,8 +1567,8 @@ Install from VSIX. Requirements: Apple Silicon Mac, macOS 13+, VS Code 1.90+.
 
 - [ ] **Step 5: Build + package locally to verify**
 
-Run: `npm run build && npm run package -w fortress-code`
-Expected: `npm run build` clean across all three packages; `fortress-code.vsix` created at repo root.
+Run: `npm run build && npm run package -w fortress-chat`
+Expected: `npm run build` clean across all three packages; `fortress-chat.vsix` created at repo root.
 
 - [ ] **Step 6: Commit**
 

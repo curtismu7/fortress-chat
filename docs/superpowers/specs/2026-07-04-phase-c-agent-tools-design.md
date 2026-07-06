@@ -1,4 +1,4 @@
-# Fortress Code — Phase C: Stronger Agent Tools (design)
+# FortressChat — Phase C: Stronger Agent Tools (design)
 
 **Status:** Approved (Curtis, 2026-07-04 — "do it")
 **Builds on:** the agent loop + `agent/tools.ts` (read_file/list_files/search/edit_file) and the diff-approval flow.

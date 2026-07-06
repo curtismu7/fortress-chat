@@ -28,6 +28,6 @@ jobs:
         with: { node-version: 20, cache: npm }
       - run: npm ci
       - run: npm run build
-      - run: npm run package -w fortress-code
+      - run: npm run package -w fortress-chat
       - uses: softprops/action-gh-release@v2
-        with: { files: fortress-code.vsix }
+        with: { files: fortress-chat.vsix }

@@ -1,6 +1,6 @@
 import { spawn, ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
-import type { CatalogModel, ServerState } from '@fortress-code/shared';
+import type { CatalogModel, ServerState } from '@fortress-chat/shared';
 import { llamaServerPath } from './binary';
 
 export const DEFAULT_CTX = 8192;

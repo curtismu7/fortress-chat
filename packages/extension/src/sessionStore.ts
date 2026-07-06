@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { validateHistory, type ChatMessage } from '@fortress-code/shared';
+import { validateHistory, type ChatMessage } from '@fortress-chat/shared';
 import { Session } from './chat/session';
 
 export interface ChatMeta { id: string; title: string; folder?: string; personaId?: string; skillId?: string }
 interface MementoLike { get(key: string): unknown; update(key: string, value: unknown): Thenable<void> | void }
-const KEY = 'fortressCode.chats';
-const LEGACY = 'fortressCode.session';
+const KEY = 'fortressChat.chats';
+const LEGACY = 'fortressChat.session';
+// Pre-rename keys (fortressCode → fortressChat). Used for one-time migration.
+const PRE_RENAME_KEY = 'fortressCode.chats';
+const PRE_RENAME_LEGACY = 'fortressCode.session';
 
 export class SessionStore {
   activeId: string;
@@ -108,7 +111,17 @@ export class SessionStore {
   }
 
   static load(state: MementoLike): SessionStore {
-    const raw = state.get(KEY) as { activeId: string; metas: ChatMeta[]; messagesById: Record<string, ChatMessage[]> } | undefined;
+    type Stored = { activeId: string; metas: ChatMeta[]; messagesById: Record<string, ChatMessage[]> };
+    const raw = state.get(KEY) as Stored | undefined;
+    // One-time migration from pre-rename 'fortressCode.chats' key.
+    if (!raw) {
+      const preRename = state.get(PRE_RENAME_KEY) as Stored | undefined;
+      if (preRename?.metas?.length) {
+        void state.update(KEY, preRename);
+        void state.update(PRE_RENAME_KEY, undefined);
+        return SessionStore.load(state);
+      }
+    }
     if (raw && raw.metas?.length) {
       const order = raw.metas.map((m) => m.id);
       const titles = new Map(raw.metas.map((m) => [m.id, m.title] as const));
@@ -124,7 +137,7 @@ export class SessionStore {
       const activeId = sessions.has(raw.activeId) ? raw.activeId : order[0];
       return new SessionStore(state, activeId, order, titles, folders, personaIds, skillIds, sessions);
     }
-    const legacy = state.get(LEGACY);
+    const legacy = state.get(LEGACY) ?? state.get(PRE_RENAME_LEGACY);
     const s = new Session();
     try { if (legacy) s.messages = validateHistory(legacy); } catch { s.messages = []; }
     const id = randomUUID();

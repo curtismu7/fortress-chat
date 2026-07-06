@@ -1,7 +1,7 @@
 import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadCatalog, type CatalogModel, type StatusResponse, type StartRejection, type DownloadProgress, type EmbedResponse, hfUrl } from '@fortress-code/shared';
+import { loadCatalog, type CatalogModel, type StatusResponse, type StartRejection, type DownloadProgress, type EmbedResponse, hfUrl } from '@fortress-chat/shared';
 import { Supervisor } from './supervisor';
 import { EmbedSupervisor } from './embedSupervisor';
 import { modelsDir } from './paths';

@@ -1,4 +1,4 @@
-# Fortress Code — Phase B: Conversation Quality (design)
+# FortressChat — Phase B: Conversation Quality (design)
 
 **Status:** Approved (brainstorming session with Curtis, 2026-07-04)
 **Part of:** the coding-UX roadmap (Phase B of A→B→C→D). Builds on Phase A (editor context + code rendering).
@@ -41,7 +41,7 @@ class SessionStore {
   static load(state: vscode.Memento): SessionStore;   // restores metas + per-chat messages + activeId
 }
 ```
-Persisted in `workspaceState`: `{ activeId, metas: ChatMeta[], messagesById: Record<string, ChatMessage[]> }`. Migration: an existing single `Session` (`fortressCode.session` key) becomes the first chat on first load.
+Persisted in `workspaceState`: `{ activeId, metas: ChatMeta[], messagesById: Record<string, ChatMessage[]> }`. Migration: an existing single `Session` (`fortressChat.session` key) becomes the first chat on first load.
 
 ### 3.5 `ChatViewProvider` wiring
 - Replace the single `this.session` with `this.store: SessionStore`; `this.store.active()` is used everywhere `this.session` was. On send, after the assistant reply, call `store.touchTitle()` and `store.save()`; post the chat list (`{type:'chats', metas, activeId}`).

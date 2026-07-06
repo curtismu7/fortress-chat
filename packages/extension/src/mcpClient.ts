@@ -31,7 +31,7 @@ export class McpClient {
         if (msg) this.lastError = msg.slice(0, 200);
       });
       this.proc.on('error', (e) => { this.lastError = e.message; });
-      await this.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'fortress-code', version: '0.1.0' } });
+      await this.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'fortress-chat', version: '0.1.0' } });
       await this.notify('notifications/initialized', {});
       const listed = await this.request('tools/list', {}) as { tools?: McpTool[] };
       this.tools = (listed?.tools ?? []).map((t) => ({

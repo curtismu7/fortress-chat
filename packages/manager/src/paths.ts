@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -9,8 +9,20 @@ function ensure(dir: string): string {
   return dir;
 }
 
+/** One-time migration from the old 'fortress-code' data dir to 'fortress-chat'.
+ *  Moves the legacy dir in place if the new one doesn't already exist. */
+function migrateLegacyDataDir(newDir: string): void {
+  if (existsSync(newDir)) return;
+  const legacy = join(homedir(), 'Library', 'Application Support', 'fortress-code');
+  if (!existsSync(legacy)) return;
+  try { renameSync(legacy, newDir); return; } catch { /* fall through to copy */ }
+  try { cpSync(legacy, newDir, { recursive: true }); } catch { /* leave legacy in place */ }
+}
+
 export function dataDir(): string {
-  return ensure(process.env.FC_DATA_DIR ?? join(homedir(), 'Library', 'Application Support', 'fortress-code'));
+  const dir = process.env.FC_DATA_DIR ?? join(homedir(), 'Library', 'Application Support', 'fortress-chat');
+  if (!process.env.FC_DATA_DIR) migrateLegacyDataDir(dir);
+  return ensure(dir);
 }
 
 export function binDir(): string { return ensure(join(dataDir(), 'bin')); }

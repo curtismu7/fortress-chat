@@ -127,7 +127,7 @@ export async function executeTool(name: string, args: any, workspaceRoot: string
     }
     case 'run_command': {
       const command = String(args.command);
-      const choice = await vscode.window.showWarningMessage(`Fortress Code wants to run:\n\n${command}`, { modal: true }, 'Run', 'Reject');
+      const choice = await vscode.window.showWarningMessage(`FortressChat wants to run:\n\n${command}`, { modal: true }, 'Run', 'Reject');
       if (choice !== 'Run') return 'rejected by user';
       try {
         const { stdout, stderr } = await execFileP('/bin/sh', ['-c', command], { cwd: workspaceRoot, timeout: 60_000, maxBuffer: 4 * 1024 * 1024 });

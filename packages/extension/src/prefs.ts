@@ -3,9 +3,13 @@ export interface Params { temperature?: number; top_p?: number; max_tokens?: num
 export interface Persona { id: string; name: string; systemPrompt: string; modelId?: string; params?: Params }
 export interface MementoLike { get(key: string): unknown; update(key: string, value: unknown): unknown }
 
-const PROMPTS_KEY = 'fortressCode.prompts';
-const PARAMS_KEY = 'fortressCode.params';
-const PERSONAS_KEY = 'fortressCode.personas';
+const PROMPTS_KEY = 'fortressChat.prompts';
+const PARAMS_KEY = 'fortressChat.params';
+const PERSONAS_KEY = 'fortressChat.personas';
+// Pre-rename keys (fortressCode → fortressChat). Used for one-time migration.
+const LEGACY_PROMPTS = 'fortressCode.prompts';
+const LEGACY_PARAMS = 'fortressCode.params';
+const LEGACY_PERSONAS = 'fortressCode.personas';
 
 const RANGES: Record<keyof Params, (v: number) => boolean> = {
   temperature: (v) => v >= 0 && v <= 2,
@@ -13,8 +17,21 @@ const RANGES: Record<keyof Params, (v: number) => boolean> = {
   max_tokens: (v) => Number.isInteger(v) && v > 0,
 };
 
+/** One-time migration of a single pre-rename key to its new name. */
+function migrate(state: MementoLike, legacyKey: string, newKey: string): void {
+  if (state.get(newKey) !== undefined) return;
+  const legacy = state.get(legacyKey);
+  if (legacy === undefined) return;
+  void state.update(newKey, legacy);
+  void state.update(legacyKey, undefined);
+}
+
 export class Prefs {
-  constructor(private state: MementoLike) {}
+  constructor(private state: MementoLike) {
+    migrate(state, LEGACY_PROMPTS, PROMPTS_KEY);
+    migrate(state, LEGACY_PARAMS, PARAMS_KEY);
+    migrate(state, LEGACY_PERSONAS, PERSONAS_KEY);
+  }
 
   prompts(): SavedPrompt[] {
     const raw = this.state.get(PROMPTS_KEY);
