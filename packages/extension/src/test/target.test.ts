@@ -53,3 +53,24 @@ describe('resolveTarget (openrouter)', () => {
     expect(() => resolveTarget(bad as any, { openRouterKey: 'sk-or-abc' })).toThrow(PolicyViolationError);
   });
 });
+
+const googleEntry = {
+  id: 'google-gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', provider: 'google', agentCapable: true,
+  origin: { org: 'Google', country: 'US' },
+  hosting: { kind: 'google' },
+  approved: true, google: { model: 'gemini-2.5-flash', contextLength: 1048576 },
+} as const;
+
+describe('resolveTarget (google)', () => {
+  it('builds a Google Gemini OpenAI-compatible target', () => {
+    const t = resolveTarget(googleEntry as any, { googleKey: 'AIza-test' });
+    expect(t.url).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
+    expect(t.headers.authorization).toBe('Bearer AIza-test');
+    expect(t.model).toBe('gemini-2.5-flash');
+    expect(t.bodyExtra).toEqual({});
+  });
+
+  it('throws if the Google API key is missing', () => {
+    expect(() => resolveTarget(googleEntry as any, {})).toThrow(/Google Gemini API key/i);
+  });
+});

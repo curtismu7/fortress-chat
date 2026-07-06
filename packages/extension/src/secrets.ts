@@ -33,3 +33,15 @@ export async function getFireworksKey(secrets: SecretStorage): Promise<string | 
 export async function setFireworksKey(secrets: SecretStorage, key: string): Promise<void> {
   await secrets.store(FIREWORKS_KEY_ID, key.trim());
 }
+
+export const GOOGLE_KEY_ID = 'fortressChat.googleKey';
+
+export async function getGoogleKey(secrets: SecretStorage): Promise<string | undefined> {
+  return secrets.get(GOOGLE_KEY_ID);
+}
+export async function setGoogleKey(secrets: SecretStorage, key: string): Promise<void> {
+  await secrets.store(GOOGLE_KEY_ID, key.trim());
+}
+export async function clearGoogleKey(secrets: SecretStorage): Promise<void> {
+  await secrets.delete(GOOGLE_KEY_ID);
+}

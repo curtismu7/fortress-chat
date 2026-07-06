@@ -1,6 +1,9 @@
-export type Provider = 'local' | 'openrouter';
+export type Provider = 'local' | 'openrouter' | 'google';
 export interface Origin { org: string; country: 'US' }
-export type Hosting = { kind: 'on-device' } | { kind: 'openrouter'; usProviders: string[] };
+export type Hosting =
+  | { kind: 'on-device' }
+  | { kind: 'openrouter'; usProviders: string[] }
+  | { kind: 'google' };
 
 export interface PolicyEntry {
   id: string;
@@ -12,6 +15,7 @@ export interface PolicyEntry {
   approved: boolean;
   local?: { catalogId: string; hidden?: boolean };
   openrouter?: { slug: string; contextLength: number };
+  google?: { model: string; contextLength: number };
 }
 
 export class PolicyViolationError extends Error {
@@ -25,6 +29,7 @@ export function isAllowed(e: PolicyEntry): boolean {
   if (!e.approved) return false;
   if (e.origin.country !== 'US') return false;
   if (e.provider === 'local') return e.hosting.kind === 'on-device';
+  if (e.provider === 'google') return e.hosting.kind === 'google';
   return e.hosting.kind === 'openrouter' && e.hosting.usProviders.length > 0;
 }
 

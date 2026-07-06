@@ -9,8 +9,24 @@ document.addEventListener('click', (e) => {
 });
 let streaming = '';
 let provider = 'local';
-let policy = { local: [], hidden: [], openrouter: [] };
+let policy = { local: [], hidden: [], google: [], openrouter: [] };
 let selectedId = null;
+
+/** Cloud models available when the user has saved the matching API key. */
+function cloudModels() {
+  const out = [];
+  if (window.__googleKeySet) out.push(...(policy.google || []));
+  if (window.__orKeySet) out.push(...(policy.openrouter || []));
+  return out;
+}
+
+function allPolicyModels() {
+  return [...(policy.local || []), ...(policy.hidden || []), ...cloudModels()];
+}
+
+function isCloudProvider(m) {
+  return !!m && (m.provider === 'openrouter' || m.provider === 'google');
+}
 
 function openModelPicker() {
   closeSettings(false);
@@ -240,7 +256,7 @@ function renderActionSub(body, q) {
     return;
   }
   if (actionSub === 'multitask') {
-    const models = [...(policy.local || []), ...(window.__orKeySet ? (policy.openrouter || []) : [])];
+    const models = allPolicyModels();
     const hint = document.createElement('div');
     hint.className = 'action-hint';
     hint.textContent = 'Pick a second model to compare side-by-side.';
@@ -457,7 +473,8 @@ function enhanceRich(container) {
 }
 
 function modelRowMeta(m, status) {
-  if (m.provider !== 'local') return { sub: 'Cloud · US providers pinned', action: '' };
+  if (m.provider === 'google') return { sub: 'Google Gemini · Cloud', action: '' };
+  if (m.provider === 'openrouter') return { sub: 'Cloud · US providers pinned', action: '' };
   const cid = m.local.catalogId;
   if (status && status.download && status.download.modelId === cid && status.download.totalBytes) {
     const pct = Math.max(0, Math.min(100, Math.floor((status.download.receivedBytes / status.download.totalBytes) * 100)));
@@ -475,7 +492,7 @@ function renderModels(status) {
   if (!box) return;
   const local = policy.local || [];
   const hidden = policy.hidden || [];
-  const cloud = window.__orKeySet ? (policy.openrouter || []) : [];
+  const cloud = cloudModels();
   const all = [...local, ...hidden, ...cloud];
   const row = (m) => {
     const meta = modelRowMeta(m, status);
@@ -492,7 +509,8 @@ function renderModels(status) {
   const hiddenOpen = window.__hiddenModelsOpen !== false;
   box.innerHTML = local.map(row).join('') +
     (hidden.length ? `<details class="model-hidden-group"${hiddenOpen ? ' open' : ''}><summary class="model-group-label">Hidden models</summary><div class="model-hidden-list">${hidden.map(row).join('')}</div></details>` : '') +
-    (cloud.length ? `<div class="model-group-label">Cloud models</div>${cloud.map(row).join('')}` : '');
+    (cloud.length ? `<div class="model-group-label">Cloud models</div>${cloud.map(row).join('')}` : '') +
+    (!window.__googleKeySet ? `<p class="model-group-hint">Add a Google Gemini API key in Settings to use cloud models.</p>` : '');
   const hiddenGroup = box.querySelector('.model-hidden-group');
   if (hiddenGroup) hiddenGroup.addEventListener('toggle', () => { window.__hiddenModelsOpen = hiddenGroup.open; });
   box.querySelectorAll('.model-row').forEach((el) => {
@@ -518,7 +536,7 @@ function renderState(status) {
     setup.hidden = false;
     openModelPicker();
     setup.innerHTML = `<b style="color:#e07a7a">⚠ ${esc(status.downloadError)}</b><p>Tap the model again to retry.</p>`;
-  } else if (!status.binaryInstalled && !(window.__orKeySet && selectedId && (policy.openrouter || []).some((m) => m.id === selectedId))) {
+  } else if (!status.binaryInstalled && !(selectedId && allPolicyModels().some((m) => m.id === selectedId && isCloudProvider(m)))) {
     setup.hidden = false;
     const gb = Math.round(status.ram.totalBytes / 2 ** 30);
     setup.innerHTML = `<b>Welcome to FortressChat</b><p>This Mac has ${gb} GB RAM. Set up the local engine to run models on-device.</p><button type="button" id="do-setup">Set up local engine</button>`;
@@ -534,17 +552,17 @@ function renderState(status) {
     setup.hidden = true;
   }
 
-  const m = selectedId ? [...(policy.local || []), ...(policy.hidden || []), ...(policy.openrouter || [])].find((x) => x.id === selectedId) : null;
+  const m = selectedId ? allPolicyModels().find((x) => x.id === selectedId) : null;
   const loading = !!m && m.provider === 'local' && (status.state === 'starting' || status.state === 'loading-model');
-  const ready = !!m && (m.provider === 'openrouter' ? true : status.state === 'ready');
-  const engineReady = status.binaryInstalled || window.__orKeySet;
+  const ready = !!m && (isCloudProvider(m) ? true : status.state === 'ready');
+  const engineReady = status.binaryInstalled || window.__googleKeySet || window.__orKeySet;
   const showComposer = !!m && engineReady;
   $('composer').hidden = !showComposer;
   const empty = $('empty-state');
   if (empty) empty.hidden = showComposer && (ready || loading);
   const emptyText = $('empty-state-text');
   if (emptyText) {
-    if (!engineReady) emptyText.textContent = 'Set up the local engine to run models on-device.';
+    if (!engineReady) emptyText.textContent = 'Set up the local engine or add a Google Gemini API key in Settings.';
     else if (!m) emptyText.textContent = 'Pick a model from the sidebar to start chatting.';
     else if (loading) emptyText.textContent = 'Loading model…';
     else if (!ready && m.provider === 'local' && status.state === 'crashed') emptyText.textContent = 'Model crashed — choose another model from the sidebar.';
@@ -574,9 +592,15 @@ function setProvider(p) {
 
 window.addEventListener('message', (e) => {
   const m = e.data;
-  if (m.type === 'policy') { policy = { local: m.local, hidden: m.hidden || [], openrouter: m.openrouter }; if (window.__status) renderState(window.__status); }
+  if (m.type === 'policy') { policy = { local: m.local, hidden: m.hidden || [], google: m.google || [], openrouter: m.openrouter }; if (window.__status) renderState(window.__status); }
   if (m.type === 'openRouterKeySet') {
     window.__orKeySet = m.set;
+    if (window.__status) renderState(window.__status);
+  }
+  if (m.type === 'googleKeySet') {
+    window.__googleKeySet = m.set;
+    const statusEl = $('google-key-status');
+    if (statusEl) statusEl.hidden = !m.set;
     if (window.__status) renderState(window.__status);
   }
   if (m.type === 'state') { selectedId = m.selectedId; renderState(m.status); }
@@ -898,7 +922,7 @@ function promptLabel(p) {
 
 function fillComparePicker() {
   const pick = $('compare-picker'); if (!pick) return;
-  const models = [...(policy.local || []), ...(policy.hidden || []), ...(policy.openrouter || [])];
+  const models = allPolicyModels();
   pick.innerHTML = '<option value="">No compare</option>' + models.map((m) => `<option value="${m.id}">${esc(m.displayName)}</option>`).join('');
 }
 
@@ -1119,6 +1143,7 @@ document.addEventListener('click', (e) => {
   closeActionMenu();
 });
 { const _ok = $('or-key-save'); if (_ok) _ok.onclick = () => { const k = $('or-key-input').value.trim(); if (k) vscode.postMessage({ type: 'setOpenRouterKey', key: k }); }; }
+{ const _gk = $('google-key-save'); if (_gk) _gk.onclick = () => { const k = $('google-key-input').value.trim(); if (k) vscode.postMessage({ type: 'setGoogleKey', key: k }); }; }
 { const _ab = $('add-btn'); if (_ab) _ab.onclick = () => { const s = $('add-slug').value.trim(); if (s) vscode.postMessage({ type: 'addModel', slug: s }); }; }
 $('send').onclick = () => {
   let t = $('input').value.trim();
