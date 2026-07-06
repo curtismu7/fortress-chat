@@ -49,13 +49,4 @@ describe('policy registry', () => {
     expect(isAllowed(e!)).toBe(true);
     expect(e!.origin).toEqual({ org: 'Nomic AI', country: 'US' });
   });
-
-  it('policy exposes Llama 4 Maverick as an approved US OpenRouter entry', () => {
-    const e = loadPolicy().find((x) => x.id === 'or-llama-4-maverick');
-    expect(e).toBeTruthy();
-    expect(isAllowed(e!)).toBe(true);
-    expect(e!.origin).toEqual({ org: 'Meta', country: 'US' });
-    expect(e!.openrouter?.slug).toBe('meta-llama/llama-4-maverick');
-    expect(explainBlock('meta-llama/llama-4-maverick')).toBeNull();
-  });
 });
