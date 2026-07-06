@@ -498,6 +498,9 @@ function renderModels(status) {
         vscode.postMessage({ type: 'downloadModel', catalogId: m.local.catalogId });
         return;
       }
+      closeModelPicker();
+      selectedId = m.id;
+      if (window.__status) renderState(window.__status);
       vscode.postMessage({ type: 'selectModel', id: m.id });
     };
   });
@@ -523,22 +526,25 @@ function renderState(status) {
     openModelPicker();
     const pct = Math.round((status.download.receivedBytes / status.download.totalBytes) * 100);
     setup.innerHTML = `<p>Downloading model… ${pct}%</p><progress max="100" value="${pct}"></progress>`;
-  } else if (status.state === 'loading-model' || status.state === 'starting') {
-    setup.hidden = false;
-    setup.innerHTML = `<p>Loading model…</p>`;
-  } else setup.hidden = true;
+  } else {
+    setup.hidden = true;
+  }
 
   const m = selectedId ? [...(policy.local || []), ...(policy.openrouter || [])].find((x) => x.id === selectedId) : null;
+  const loading = !!m && m.provider === 'local' && (status.state === 'starting' || status.state === 'loading-model');
   const ready = !!m && (m.provider === 'openrouter' ? true : status.state === 'ready');
   const engineReady = status.binaryInstalled || window.__orKeySet;
-  $('composer').hidden = !ready;
+  const showComposer = !!m && engineReady;
+  $('composer').hidden = !showComposer;
   const empty = $('empty-state');
-  if (empty) empty.hidden = ready;
+  if (empty) empty.hidden = showComposer && (ready || loading);
   const emptyText = $('empty-state-text');
   if (emptyText) {
     if (!engineReady) emptyText.textContent = 'Set up the local engine to run models on-device.';
     else if (!m) emptyText.textContent = 'Pick a model from the sidebar to start chatting.';
-    else if (!ready) emptyText.textContent = 'Loading model…';
+    else if (loading) emptyText.textContent = 'Loading model…';
+    else if (!ready && m.provider === 'local' && status.state === 'crashed') emptyText.textContent = 'Model crashed — choose another model from the sidebar.';
+    else if (!ready && m.provider === 'local') emptyText.textContent = 'Model did not start — pick a model again from the sidebar.';
     else emptyText.textContent = '';
   }
   const sidebarModelBtn = $('sidebar-model-btn');
@@ -554,7 +560,7 @@ function renderState(status) {
     agentEl.disabled = !m || !m.agentCapable;
     if (agentEl.disabled) agentEl.checked = false;
   }
-  if (ready && window.__modelPickerOpen) closeModelPicker();
+  if (selectedId && window.__modelPickerOpen) closeModelPicker();
   if (!selectedId && !window.__pickerShown) { window.__pickerShown = true; openModelPicker(); }
 }
 
@@ -801,12 +807,27 @@ function renderRejection(r, modelId) {
   const need = Math.round(r.requiredBytes / 2 ** 30), have = Math.round(r.availableBytes / 2 ** 30);
   const rows = r.foreign.map((p) => `<li>${esc(p.command.slice(0, 70))} — ${Math.round(p.rssBytes / 2 ** 30)} GB (pid ${p.pid})</li>`).join('');
   const setup = $('setup');
-  if (!setup) return;
-  setup.hidden = false;
-  openModelPicker();
-  setup.innerHTML = `<b>Not enough memory</b><p>Needs ~${need} GB but ${have} GB is available.</p>${r.foreign.length ? `<ul>${rows}</ul>` : ''}${r.wouldFitAfterForeignKill ? `<button type="button" id="kill-foreign">Stop those and continue</button>` : `<p>Even stopping those won't free enough — try a smaller model.</p>`}`;
-  const btn = $('kill-foreign');
-  if (btn) btn.onclick = () => { vscode.postMessage({ type: 'killForeign', pids: r.foreign.map((p) => p.pid) }); setTimeout(() => vscode.postMessage({ type: 'selectModel', id: modelId }), 1500); };
+  if (setup) {
+    setup.hidden = true;
+    setup.innerHTML = '';
+  }
+  const msg = r.wouldFitAfterForeignKill
+    ? `Not enough memory (~${need} GB needed, ${have} GB free). Stop other llama-server processes and retry.`
+    : `Not enough memory (~${need} GB needed, ${have} GB free). Try a smaller model.`;
+  $('banner-text').innerHTML = `${esc(msg)}${r.foreign.length ? `<ul style="margin:8px 0 0;padding-left:18px">${rows}</ul>` : ''}`;
+  $('banner').hidden = false;
+  if (r.wouldFitAfterForeignKill) {
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.textContent = 'Stop other models and retry';
+    retry.style.marginTop = '8px';
+    retry.onclick = () => {
+      vscode.postMessage({ type: 'killForeign', pids: r.foreign.map((p) => p.pid) });
+      setTimeout(() => vscode.postMessage({ type: 'selectModel', id: modelId }), 1500);
+    };
+    $('banner-text').appendChild(retry);
+  }
+  if (window.__status) renderState(window.__status);
 }
 
 function renderChatPicker(metas, activeId) {
