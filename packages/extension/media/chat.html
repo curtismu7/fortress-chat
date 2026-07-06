@@ -49,14 +49,12 @@
     <input id="chat-search" placeholder="Search chats" />
     <select id="folder-filter" title="Folder"><option value="">All folders</option></select>
     <select id="chat-picker" title="Chats"></select>
-    <select id="persona-picker" title="Persona"><option value="">Default persona</option></select>
     <select id="compare-picker" title="Compare with"><option value="">No compare</option></select>
     <span id="active-model"></span>
     <label><input type="checkbox" id="agent-toggle" /> Agent</label>
     <button id="new-chat">New chat</button>
     <button id="export-chat" title="Export chat as Markdown">Export</button>
     <button id="memory-btn" title="Memory">Memory</button>
-    <button id="personas-btn" title="Personas">Personas</button>
     <button id="attach-img" title="Attach image">📷</button>
     <button id="speak-btn" title="Read last reply aloud">🔊</button>
     <button id="params-btn" title="Model parameters">⚙</button>
@@ -70,20 +68,10 @@
   </div>
   <div id="prompts-mgr" hidden>
     <div id="prompts-list"></div>
-    <input id="pr-title" placeholder="Prompt title" />
     <textarea id="pr-text" placeholder="Prompt text (use {var} for a placeholder)"></textarea>
     <div class="pr-actions">
       <button id="pr-save">Save</button>
       <button id="prompts-close">Close</button>
-    </div>
-  </div>
-  <div id="personas-mgr" hidden>
-    <div id="personas-list"></div>
-    <input id="pe-name" placeholder="Persona name" />
-    <textarea id="pe-prompt" placeholder="System prompt"></textarea>
-    <div class="pr-actions">
-      <button id="pe-save">Save persona</button>
-      <button id="personas-close">Close</button>
     </div>
   </div>
   <div id="memory-mgr" hidden>

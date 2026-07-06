@@ -220,8 +220,8 @@ window.addEventListener('message', (e) => {
   if (m.type === 'usage' && m.usage) { const u = $('usage-last'); if (u) u.textContent = `↑${m.usage.promptTokens} ↓${m.usage.completionTokens} tok`; }
   if (m.type === 'chats') { window.__lastChats = m; renderChatPicker(m.metas, m.activeId); }
   if (m.type === 'prefs') {
-    window.__prefs = { prompts: m.prompts || [], params: m.params || {}, personas: m.personas || [] };
-    fillParams(); renderPrompts(); renderPersonas(); fillComparePicker();
+    window.__prefs = { prompts: m.prompts || [], params: m.params || {} };
+    fillParams(); renderPrompts(); fillComparePicker();
   }
   if (m.type === 'memory') {
     window.__memory = m.data || { enabled: false, facts: [] };
@@ -356,13 +356,10 @@ function fillParams() {
   const mt = $('p-maxtok'); if (mt) mt.value = params.max_tokens != null ? String(params.max_tokens) : '';
 }
 
-function renderPersonas() {
-  const list = (window.__prefs && window.__prefs.personas) || [];
-  const box = $('personas-list'); if (box) box.innerHTML = list.map((p) => `<div class="prompt-item"><span>${esc(p.name)}</span></div>`).join('');
-  const pick = $('persona-picker'); if (!pick) return;
-  const keep = pick.value;
-  pick.innerHTML = '<option value="">Default persona</option>' + list.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
-  pick.value = keep;
+function promptLabel(p) {
+  const line = (p.text || p.title || '').trim().split('\n')[0];
+  if (!line) return 'Prompt';
+  return line.length > 48 ? `${line.slice(0, 45)}…` : line;
 }
 
 function fillComparePicker() {
@@ -395,7 +392,7 @@ function renderPrompts() {
     const use = document.createElement('span');
     use.className = 'pr-title-use';
     use.dataset.id = p.id;
-    use.textContent = p.title;
+    use.textContent = promptLabel(p);
     const del = document.createElement('button');
     del.className = 'pr-del';
     del.dataset.id = p.id;
@@ -411,7 +408,7 @@ let slashActive = -1;
 function slashCandidates(filter) {
   const list = (window.__prefs && window.__prefs.prompts) || [];
   const f = filter.toLowerCase();
-  return list.filter((p) => p.title.toLowerCase().includes(f));
+  return list.filter((p) => promptLabel(p).toLowerCase().includes(f) || p.text.toLowerCase().includes(f));
 }
 function renderSlashMenu(items) {
   const menu = $('slash-menu');
@@ -421,7 +418,7 @@ function renderSlashMenu(items) {
     const row = document.createElement('div');
     row.className = 'slash-item' + (i === slashActive ? ' active' : '');
     row.dataset.idx = String(i);
-    row.textContent = p.title;
+    row.textContent = promptLabel(p);
     menu.appendChild(row);
   });
   menu.hidden = items.length === 0;
@@ -479,7 +476,6 @@ $('banner-close').onclick = () => { $('banner').hidden = true; };
   }
   _ff.oninput && $('chat-search').dispatchEvent(new Event('input'));
 }; }
-{ const _pp = $('persona-picker'); if (_pp) _pp.onchange = () => vscode.postMessage({ type: 'setPersona', personaId: _pp.value || null }); }
 { const _cp = $('compare-picker'); if (_cp) _cp.onchange = () => vscode.postMessage({ type: 'setCompareModel', id: _cp.value || null }); }
 { const _di = $('docs-index'); if (_di) _di.onclick = () => vscode.postMessage({ type: 'indexDocs' }); }
 { const _ai = $('attach-img'); if (_ai) _ai.onclick = () => vscode.postMessage({ type: 'attachImage' }); }
@@ -489,14 +485,6 @@ $('banner-close').onclick = () => { $('banner').hidden = true; };
 { const _ms = $('mem-save'); if (_ms) _ms.onclick = () => {
   const facts = ($('mem-facts')?.value || '').split('\n').map((l) => l.trim()).filter(Boolean);
   vscode.postMessage({ type: 'setMemory', enabled: !!$('mem-enabled')?.checked, facts });
-}; }
-{ const _pb2 = $('personas-btn'); if (_pb2) _pb2.onclick = () => { const mgr = $('personas-mgr'); if (mgr) { mgr.hidden = !mgr.hidden; renderPersonas(); } }; }
-{ const _pc = $('personas-close'); if (_pc) _pc.onclick = () => { const mgr = $('personas-mgr'); if (mgr) mgr.hidden = true; }; }
-{ const _ps2 = $('pe-save'); if (_ps2) _ps2.onclick = () => {
-  const name = $('pe-name')?.value.trim(); const text = $('pe-prompt')?.value.trim();
-  if (!name || !text) return;
-  vscode.postMessage({ type: 'savePersona', persona: { id: crypto.randomUUID(), name, systemPrompt: text } });
-  $('pe-name').value = ''; $('pe-prompt').value = '';
 }; }
 { const _ac = $('artifact-close'); if (_ac) _ac.onclick = () => { const p = $('artifact-pane'); if (p) p.hidden = true; }; }
 { const _ec = $('export-chat'); if (_ec) _ec.onclick = () => vscode.postMessage({ type: 'exportChat' }); }
@@ -511,15 +499,15 @@ $('banner-close').onclick = () => { $('banner').hidden = true; };
 { const _prb = $('prompts-btn'); if (_prb) _prb.onclick = () => { const mgr = $('prompts-mgr'); if (mgr) { mgr.hidden = !mgr.hidden; if (!mgr.hidden) renderPrompts(); } }; }
 { const _pcl = $('prompts-close'); if (_pcl) _pcl.onclick = () => { const mgr = $('prompts-mgr'); if (mgr) mgr.hidden = true; }; }
 { const _ps = $('pr-save'); if (_ps) _ps.onclick = () => {
-  const titleEl = $('pr-title'); const textEl = $('pr-text');
-  if (!titleEl || !textEl) return;
-  const title = titleEl.value.trim();
-  const text = textEl.value;
-  if (!title || !text.trim()) return;
+  const textEl = $('pr-text');
+  if (!textEl) return;
+  const text = textEl.value.trim();
+  if (!text) return;
   const id = window.__editingPromptId || crypto.randomUUID();
+  const title = text.split('\n')[0].trim().slice(0, 60) || 'Prompt';
   vscode.postMessage({ type: 'savePrompt', prompt: { id, title, text } });
   window.__editingPromptId = null;
-  titleEl.value = ''; textEl.value = '';
+  textEl.value = '';
 }; }
 document.addEventListener('click', (e) => {
   const del = e.target.closest && e.target.closest('.pr-del');
@@ -528,7 +516,7 @@ document.addEventListener('click', (e) => {
   if (use) {
     const list = (window.__prefs && window.__prefs.prompts) || [];
     const p = list.find((x) => x.id === use.dataset.id);
-    if (p) { const te = $('pr-title'); const xe = $('pr-text'); if (te) te.value = p.title; if (xe) xe.value = p.text; window.__editingPromptId = p.id; }
+    if (p) { const xe = $('pr-text'); if (xe) xe.value = p.text; window.__editingPromptId = p.id; }
     return;
   }
   const item = e.target.closest && e.target.closest('.slash-item');

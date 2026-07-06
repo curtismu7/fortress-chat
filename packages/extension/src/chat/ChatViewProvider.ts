@@ -18,7 +18,7 @@ import { runAgentTurn } from '../agent/loop';
 import { getOpenRouterKey, setOpenRouterKey, getFireworksKey, setFireworksKey } from '../secrets';
 import { buildContextPreamble, parseMentions, capContent, type ChatContext, type AttachedFile } from '../context';
 import { resolveInWorkspace, editFileWithApproval } from '../agent/tools';
-import { Prefs, type Persona } from '../prefs';
+import { Prefs } from '../prefs';
 import { searchChats } from '../chatSearch';
 import { exportMarkdown } from '../exportChat';
 import { MemoryStore } from '../memory';
@@ -152,7 +152,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     try {
       this.client = await this.connect();
       this.post({ type: 'policy', local: localEntries(), openrouter: loadPolicy().filter((e) => e.provider === 'openrouter') });
-      this.post({ type: 'prefs', prompts: this.prefs.prompts(), params: this.prefs.params(), personas: this.prefs.personas() });
+      this.post({ type: 'prefs', prompts: this.prefs.prompts(), params: this.prefs.params() });
       this.post({ type: 'memory', data: this.memoryData() });
       this.post({ type: 'folders', folders: this.store.listFolders() });
       this.post({ type: 'docsStatus', stats: this.docsService().stats() });
@@ -380,9 +380,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'forkChat': this.generating?.abort(); this.store.fork(Number(m.index)); this.post({ type: 'history', messages: this.store.active().messages }); this.postChats(); return;
         case 'searchChats': this.post({ type: 'searchResults', metas: searchChats(String(m.query ?? ''), this.store.metas(), this.store.messagesById(), m.folder ? String(m.folder) : undefined) }); return;
         case 'setFolder': this.store.setFolder(this.store.activeId, m.folder ? String(m.folder) : undefined); this.post({ type: 'folders', folders: this.store.listFolders() }); this.postChats(); return;
-        case 'setPersona': this.store.setPersona(this.store.activeId, m.personaId ? String(m.personaId) : undefined); this.postChats(); return;
-        case 'savePersona': this.prefs.savePersona(m.persona as Persona); this.post({ type: 'prefs', prompts: this.prefs.prompts(), params: this.prefs.params(), personas: this.prefs.personas() }); return;
-        case 'deletePersona': this.prefs.deletePersona(String(m.id)); this.post({ type: 'prefs', prompts: this.prefs.prompts(), params: this.prefs.params(), personas: this.prefs.personas() }); return;
         case 'setMemory': {
           const store = new MemoryStore(this.memoryPath());
           store.save({ enabled: !!m.enabled, facts: Array.isArray(m.facts) ? m.facts.map(String) : store.load().facts });

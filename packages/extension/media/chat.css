@@ -80,7 +80,7 @@ code.inl { background: var(--vscode-textCodeBlock-background, #2a2a2a); padding:
 .prompt-item { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px solid var(--vscode-widget-border, #333); }
 .prompt-item .pr-title-use { cursor: pointer; flex: 1; }
 .prompt-item .pr-del { background: none; border: none; color: var(--vscode-descriptionForeground); cursor: pointer; }
-#pr-title, #pr-text { width: 100%; box-sizing: border-box; }
+#pr-text { width: 100%; box-sizing: border-box; }
 #pr-text { resize: vertical; min-height: 50px; font-family: inherit; }
 #prompts-mgr .pr-actions { display: flex; gap: 6px; }
 #composer { position: relative; }
@@ -92,7 +92,7 @@ code.inl { background: var(--vscode-textCodeBlock-background, #2a2a2a); padding:
 #compare-pane { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px 8px; font-size: 11px; }
 #compare-pane[hidden] { display: none !important; }
 #compare-a, #compare-b { background: var(--vscode-editorWidget-background); border-radius: 4px; padding: 6px; max-height: 120px; overflow-y: auto; white-space: pre-wrap; }
-#personas-mgr, #memory-mgr { background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-widget-border, #333); border-radius: 6px; padding: 8px; margin: 6px 8px; }
+#memory-mgr { background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-widget-border, #333); border-radius: 6px; padding: 8px; margin: 6px 8px; }
 #mem-facts { width: 100%; min-height: 60px; box-sizing: border-box; font-family: inherit; }
 #slash-menu { position: absolute; left: 8px; right: 8px; z-index: 20; background: var(--vscode-dropdown-background); border: 1px solid var(--vscode-dropdown-border); border-radius: 6px; max-height: 160px; overflow-y: auto; box-shadow: 0 -2px 8px rgba(0,0,0,.3); }
 .slash-item { padding: 5px 8px; cursor: pointer; font-size: 12px; }

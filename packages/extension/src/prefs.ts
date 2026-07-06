@@ -22,9 +22,12 @@ export class Prefs {
       !!p && typeof p.id === 'string' && typeof p.title === 'string' && typeof p.text === 'string') : [];
   }
   savePrompt(p: SavedPrompt): void {
+    const text = p.text.trim();
+    const title = p.title?.trim() || text.split('\n')[0]?.trim().slice(0, 60) || 'Prompt';
+    const saved = { ...p, text, title };
     const list = this.prompts();
-    const i = list.findIndex((x) => x.id === p.id);
-    if (i >= 0) list[i] = p; else list.push(p);
+    const i = list.findIndex((x) => x.id === saved.id);
+    if (i >= 0) list[i] = saved; else list.push(saved);
     void this.state.update(PROMPTS_KEY, list);
   }
   deletePrompt(id: string): void {
