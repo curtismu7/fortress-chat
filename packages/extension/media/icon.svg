@@ -1,1 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V10l4-3V4h4v1l2-1.5L15 5V4h4v3l4 3v11H3z"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+  <!-- Battlements -->
+  <rect x="1" y="3.5" width="2.75" height="2.75" rx="0.35"/>
+  <rect x="5.25" y="3.5" width="2.75" height="2.75" rx="0.35"/>
+  <rect x="10.625" y="3.5" width="2.75" height="2.75" rx="0.35"/>
+  <rect x="16" y="3.5" width="2.75" height="2.75" rx="0.35"/>
+  <rect x="20.25" y="3.5" width="2.75" height="2.75" rx="0.35"/>
+  <!-- Towers, wall, and gate -->
+  <path fill-rule="evenodd" clip-rule="evenodd" d="M1 6.25h6.25V21H1V6.25zm15.75 0H23V21h-6.25V6.25zM7.25 6.25h9.5V21H7.25V6.25zm2.25 12.25h5v2.5h-5v-2.5z"/>
+  <!-- Lock (secure / governed AI) -->
+  <path d="M10.75 10.75c0-.69.56-1.25 1.25-1.25s1.25.56 1.25 1.25v.75h.75c.69 0 1.25.56 1.25 1.25v2.75c0 .69-.56 1.25-1.25 1.25h-3.5c-.69 0-1.25-.56-1.25-1.25v-2.75c0-.69.56-1.25 1.25-1.25h.75v-.75z"/>
+</svg>
