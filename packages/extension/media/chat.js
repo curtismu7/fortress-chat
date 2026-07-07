@@ -637,7 +637,14 @@ window.addEventListener('message', (e) => {
       message: m.message,
       error: m.error,
     });
+    const status = window.__status || { state: 'idle', binaryInstalled: false, downloadedModelIds: [], download: null, downloadError: null, ram: { totalBytes: 0, availableBytes: 0 } };
+    renderModels(status);
     if (window.__status) renderState(window.__status);
+    else if (m.set) {
+      window.__status = status;
+      renderState(status);
+      openModelPicker();
+    }
   }
   if (m.type === 'state') { selectedId = m.selectedId; renderState(m.status); }
   if (m.type === 'history') renderHistory(m.messages);
