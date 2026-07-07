@@ -28,6 +28,13 @@ function isCloudProvider(m) {
   return !!m && (m.provider === 'openrouter' || m.provider === 'google');
 }
 
+/** Scroll the chat pane so the latest message stays visible. */
+function scrollChatToBottom() {
+  const wrap = $('messages-wrap');
+  if (!wrap) return;
+  requestAnimationFrame(() => { wrap.scrollTop = wrap.scrollHeight; });
+}
+
 function openModelPicker() {
   closeSettings(false);
   const p = $('model-picker');
@@ -466,6 +473,7 @@ function enhanceRich(container) {
           holder.innerHTML = svg;
           block.hidden = true;
           toggle.hidden = false;
+          scrollChatToBottom();
         })
         .catch(() => { holder.remove(); toggle.remove(); }); // fail-soft: plain code block stays visible
     });
@@ -644,9 +652,14 @@ window.addEventListener('message', (e) => {
     $('steps').innerHTML += `<div>${esc(m.step)}</div>`;
     lastAgentStep = m.step;
     updateComposerStatus();
+    scrollChatToBottom();
   }
   if (m.type === 'reasoning') appendReasoning(m.text);
-  if (m.type === 'reasoningDone') { const b = document.querySelector('.reasoning-live'); if (b) b.open = false; }
+  if (m.type === 'reasoningDone') {
+    const b = document.querySelector('.reasoning-live');
+    if (b) b.open = false;
+    scrollChatToBottom();
+  }
   if (m.type === 'usage' && m.usage) { const u = $('usage-last'); if (u) u.textContent = `↑${m.usage.promptTokens} ↓${m.usage.completionTokens} tok`; }
   if (m.type === 'chats') { window.__lastChats = m; renderChatPicker(m.metas, m.activeId); renderSidebar(m.metas, m.activeId); fillPersonaPicker(); fillSkillPicker(); }
   if (m.type === 'prefs') {
@@ -815,14 +828,14 @@ function renderHistory(messages) {
     });
   });
   enhanceRich($('messages'));
-  $('messages').scrollTop = $('messages').scrollHeight;
+  scrollChatToBottom();
 }
 function appendToken(t) {
   streaming += t;
   let el = document.querySelector('.msg.streaming pre');
   if (!el) { const d = document.createElement('div'); d.className = 'msg assistant streaming'; d.innerHTML = '<pre></pre>'; $('messages').appendChild(d); el = d.querySelector('pre'); }
   el.textContent = streaming;
-  $('messages').scrollTop = $('messages').scrollHeight;
+  scrollChatToBottom();
   updateComposerStatus();
 }
 let turnReasoning = '';
@@ -836,7 +849,7 @@ function appendReasoning(t) {
     $('messages').appendChild(box);
   }
   box.querySelector('pre').textContent = turnReasoning;
-  $('messages').scrollTop = $('messages').scrollHeight;
+  scrollChatToBottom();
   updateComposerStatus();
 }
 function updateMeter() {
