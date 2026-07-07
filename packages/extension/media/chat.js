@@ -44,11 +44,14 @@ function scrollChatToBottom() {
 function showGoogleKeyStatus({ set, message, error, pending }) {
   const statusEl = $('google-key-status');
   if (!statusEl) return;
+  const section = $('google-gemini-settings') || statusEl.closest('details.settings-section');
+  if (section) section.open = true;
   statusEl.hidden = false;
   statusEl.classList.remove('google-key-ok', 'google-key-err', 'google-key-pending');
   if (pending) {
     statusEl.classList.add('google-key-pending');
     statusEl.textContent = message || 'Verifying API key…';
+    statusEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     return;
   }
   if (set && !error) {
@@ -59,10 +62,12 @@ function showGoogleKeyStatus({ set, message, error, pending }) {
       input.value = '';
       input.placeholder = 'API key saved';
     }
+    statusEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     return;
   }
   statusEl.classList.add('google-key-err');
   statusEl.textContent = error || message || 'Could not save API key.';
+  statusEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 function openModelPicker() {

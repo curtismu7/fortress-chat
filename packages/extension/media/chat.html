@@ -29,7 +29,7 @@
       <span id="active-model">Choose a model</span>
       <span class="model-chevron">▾</span>
     </button>
-    <button type="button" id="settings-btn" class="icon-btn" title="Settings">⚙</button>
+    <button type="button" id="settings-btn" class="icon-btn settings-gear-btn" title="Settings" aria-label="Open settings">⚙</button>
   </header>
 
   <div id="compare-pane" hidden><div id="compare-a"></div><div id="compare-b"></div></div>
@@ -188,7 +188,7 @@
         <button type="button" id="persona-save">Save persona</button>
       </details>
 
-      <details class="settings-section">
+      <details class="settings-section" id="google-gemini-settings">
         <summary>Google Gemini</summary>
         <p class="settings-hint">Add a Google AI API key to use Gemini cloud models. Get one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>.</p>
         <div id="google-key" class="settings-row-inline">
