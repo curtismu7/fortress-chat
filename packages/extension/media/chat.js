@@ -32,7 +32,12 @@ function isCloudProvider(m) {
 function scrollChatToBottom() {
   const wrap = $('messages-wrap');
   if (!wrap) return;
-  requestAnimationFrame(() => { wrap.scrollTop = wrap.scrollHeight; });
+  const run = () => {
+    const last = $('messages')?.lastElementChild;
+    if (last) last.scrollIntoView({ block: 'end', behavior: 'instant' });
+    wrap.scrollTop = wrap.scrollHeight;
+  };
+  requestAnimationFrame(() => requestAnimationFrame(run));
 }
 
 /** Show Google API key save / verify status under Settings. */
@@ -417,7 +422,10 @@ function setGenerating(active) {
   const send = $('send');
   if (cancel) cancel.hidden = !active;
   if (send) send.title = active ? 'Queue message (sends after current reply)' : 'Send';
-  if (!active) { lastAgentStep = ''; }
+  if (!active) {
+    lastAgentStep = '';
+    scrollChatToBottom();
+  }
   updateComposerStatus();
 }
 
@@ -461,6 +469,7 @@ function enhanceRich(container) {
         throwOnError: false,
         trust: false,
       });
+      scrollChatToBottom();
     }
     if (!window.mermaid) return;
     if (!window.__mermaidInit) {
