@@ -1,24 +1,21 @@
 # FortressChat
 
 Local + US-governed AI chat and coding agent for VS Code. Run models fully on
-your machine via llama.cpp, or use approved US models through OpenRouter — with
+your machine via llama.cpp, or use **Google Gemini** with your own API key — with
 a governance policy that blocks any non-US model.
 
 ## Providers
 
 - **Local (private):** Google Gemma 3 and OpenAI gpt-oss via llama.cpp. Nothing
   leaves your machine. A memory guard refuses to load a model that won't fit.
-- **OpenRouter (cloud):** a curated set of **US-origin** models, pinned to **US
-  inference providers with no fallback** (`data_collection: deny`). Prompts
-  transit OpenRouter (a US company) — less private than Local; the UI says so.
+- **Google Gemini (cloud):** curated US-origin Gemini models via the [Google AI API](https://aistudio.google.com/apikey). Add your API key in **Settings → Google Gemini**. Prompts are sent to Google; less private than local — the UI labels cloud models clearly.
 
 ## Governance
 
-Only US-origin, US-hosted models are selectable or addable. Enforcement is a
-curated allow-list maintained in the app (OpenRouter exposes no reliable
-origin/country signal, so this cannot be auto-detected). Pasting a non-US model
-is blocked with a plain-language reason. See
-`docs/superpowers/specs/2026-07-03-governance-openrouter-design.md`.
+Only US-origin models are selectable or addable. Enforcement is a curated
+allow-list maintained in the app. Pasting a non-US or unsupported cloud slug is
+blocked with a plain-language reason. OpenRouter and other cloud providers are
+disabled. See `docs/superpowers/specs/2026-07-06-gemini-cloud-design.md`.
 
 ## Install
 
