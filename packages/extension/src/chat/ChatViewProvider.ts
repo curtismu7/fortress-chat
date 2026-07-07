@@ -16,6 +16,7 @@ import { DEV_PRESETS } from '../devPresets';
 import { streamChat, type Usage } from '../providers/stream';
 import { runAgentTurn } from '../agent/loop';
 import { getOpenRouterKey, setOpenRouterKey, getFireworksKey, setFireworksKey, getGoogleKey, setGoogleKey } from '../secrets';
+import { validateGoogleApiKey } from '../providers/validateGoogleKey';
 import { buildContextPreamble, parseMentions, capContent, type ChatContext, type AttachedFile } from '../context';
 import { resolveInWorkspace, editFileWithApproval } from '../agent/tools';
 import { Prefs } from '../prefs';
@@ -387,7 +388,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     emit({ type: 'docsStatus', stats: this.docsService().stats() });
     this.postMcpStatusTarget(emit);
     emit({ type: 'openRouterKeySet', set: !!(await getOpenRouterKey(this.context.secrets)) });
-    emit({ type: 'googleKeySet', set: !!(await getGoogleKey(this.context.secrets)) });
+    {
+      const googleKeySaved = !!(await getGoogleKey(this.context.secrets));
+      emit({
+        type: 'googleKeySet',
+        set: googleKeySaved,
+        message: googleKeySaved ? 'Google API key is saved.' : undefined,
+      });
+    }
     await this.postDevTarget(emit);
     emit({ type: 'history', messages: this.store.active().messages });
     this.postChatsTarget(emit);
@@ -732,10 +740,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'addModel': return this.handleAddModel(String(m.slug));
         case 'setOpenRouterKey':
           return this.stopForPolicyViolation('Cloud models are not allowed.');
-        case 'setGoogleKey':
-          await setGoogleKey(this.context.secrets, String(m.key));
-          this.post({ type: 'googleKeySet', set: true });
+        case 'setGoogleKey': {
+          const key = String(m.key ?? '').trim();
+          const result = await validateGoogleApiKey(key);
+          if (!result.ok) {
+            const saved = !!(await getGoogleKey(this.context.secrets));
+            this.post({
+              type: 'googleKeySet',
+              set: saved,
+              message: saved ? 'Google API key is saved.' : undefined,
+              error: result.message,
+            });
+            return;
+          }
+          await setGoogleKey(this.context.secrets, key);
+          this.post({ type: 'googleKeySet', set: true, message: 'Google API key saved and verified.' });
+          await this.pushFullState();
           return;
+        }
         case 'setFireworksKey':
           return this.stopForPolicyViolation('Developer mode and cloud models are not allowed.');
         case 'selectDevModel':

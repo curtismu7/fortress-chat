@@ -35,6 +35,31 @@ function scrollChatToBottom() {
   requestAnimationFrame(() => { wrap.scrollTop = wrap.scrollHeight; });
 }
 
+/** Show Google API key save / verify status under Settings. */
+function showGoogleKeyStatus({ set, message, error, pending }) {
+  const statusEl = $('google-key-status');
+  if (!statusEl) return;
+  statusEl.hidden = false;
+  statusEl.classList.remove('google-key-ok', 'google-key-err', 'google-key-pending');
+  if (pending) {
+    statusEl.classList.add('google-key-pending');
+    statusEl.textContent = message || 'Verifying API key…';
+    return;
+  }
+  if (set && !error) {
+    statusEl.classList.add('google-key-ok');
+    statusEl.textContent = message || 'Google API key saved and verified.';
+    const input = $('google-key-input');
+    if (input) {
+      input.value = '';
+      input.placeholder = 'API key saved';
+    }
+    return;
+  }
+  statusEl.classList.add('google-key-err');
+  statusEl.textContent = error || message || 'Could not save API key.';
+}
+
 function openModelPicker() {
   closeSettings(false);
   const p = $('model-picker');
@@ -607,8 +632,11 @@ window.addEventListener('message', (e) => {
   }
   if (m.type === 'googleKeySet') {
     window.__googleKeySet = m.set;
-    const statusEl = $('google-key-status');
-    if (statusEl) statusEl.hidden = !m.set;
+    showGoogleKeyStatus({
+      set: m.set,
+      message: m.message,
+      error: m.error,
+    });
     if (window.__status) renderState(window.__status);
   }
   if (m.type === 'state') { selectedId = m.selectedId; renderState(m.status); }
@@ -1156,7 +1184,15 @@ document.addEventListener('click', (e) => {
   closeActionMenu();
 });
 { const _ok = $('or-key-save'); if (_ok) _ok.onclick = () => { const k = $('or-key-input').value.trim(); if (k) vscode.postMessage({ type: 'setOpenRouterKey', key: k }); }; }
-{ const _gk = $('google-key-save'); if (_gk) _gk.onclick = () => { const k = $('google-key-input').value.trim(); if (k) vscode.postMessage({ type: 'setGoogleKey', key: k }); }; }
+{ const _gk = $('google-key-save'); if (_gk) _gk.onclick = () => {
+  const k = $('google-key-input').value.trim();
+  if (!k) {
+    showGoogleKeyStatus({ set: false, error: 'Enter a Google AI API key.' });
+    return;
+  }
+  showGoogleKeyStatus({ set: false, pending: true, message: 'Verifying API key…' });
+  vscode.postMessage({ type: 'setGoogleKey', key: k });
+}; }
 { const _ab = $('add-btn'); if (_ab) _ab.onclick = () => { const s = $('add-slug').value.trim(); if (s) vscode.postMessage({ type: 'addModel', slug: s }); }; }
 $('send').onclick = () => {
   let t = $('input').value.trim();

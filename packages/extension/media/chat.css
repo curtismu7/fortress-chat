@@ -556,6 +556,9 @@ code.inl { background: var(--vscode-textCodeBlock-background, #2a2a2a); padding:
 .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0; font-size: 12.5px; }
 .settings-row-inline { display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
 .settings-hint { font-size: 11.5px; color: var(--fc-muted); margin: 6px 0; }
+#google-key-status.google-key-ok { color: var(--vscode-testing-iconPassed, #73c991); }
+#google-key-status.google-key-err { color: var(--vscode-errorForeground, #f48771); }
+#google-key-status.google-key-pending { color: var(--fc-muted); }
 #mem-facts, #pr-text, #persona-prompt { width: 100%; min-height: 56px; margin: 6px 0; resize: vertical; }
 #persona-name { width: 100%; margin: 6px 0; }
 .prompt-item, .persona-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--fc-border); font-size: 12px; }
