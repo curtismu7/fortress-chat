@@ -430,7 +430,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async pushStatusTarget(emit: (msg: unknown) => void): Promise<void> {
-    if (!this.client) return;
+    if (!this.client) {
+      emit({ type: 'state', status: this.cloudFallbackStatus(), selectedId: this.selected?.id ?? null });
+      return;
+    }
     try {
       const status: StatusResponse = await this.client.status();
       emit({ type: 'state', status, selectedId: this.selected?.id ?? null });
@@ -754,6 +757,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
           }
           await setGoogleKey(this.context.secrets, key);
+          if (!this.selected) {
+            const gemini = googleEntries()[0];
+            if (gemini) await this.selectModel(gemini.id);
+          }
           this.post({ type: 'googleKeySet', set: true, message: 'Google API key saved and verified.' });
           await this.pushFullState();
           return;
