@@ -120,6 +120,18 @@ input, textarea, select {
 }
 .empty-state[hidden] { display: none !important; }
 .empty-state p { margin: 0; font-size: 14px; color: var(--fc-muted); }
+.empty-hint {
+  margin-top: 4px;
+  padding: 12px 16px;
+  max-width: 360px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fc-text);
+  background: rgba(96, 148, 220, 0.1);
+  border: 1px solid rgba(96, 148, 220, 0.22);
+  border-radius: 10px;
+}
+.empty-hint[hidden] { display: none !important; }
 
 #model-picker {
   position: fixed;
@@ -269,6 +281,11 @@ input, textarea, select {
 .banner-retry:disabled { opacity: 0.6; cursor: default; }
 .banner-retry[hidden] { display: none !important; }
 #banner[hidden] { display: none !important; }
+#banner.banner--hint {
+  background: rgba(96, 148, 220, 0.1);
+  border-color: rgba(96, 148, 220, 0.22);
+  color: var(--fc-text);
+}
 
 .composer-box {
   display: flex;

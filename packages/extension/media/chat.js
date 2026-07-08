@@ -24,6 +24,41 @@ function allPolicyModels() {
   return [...(policy.local || []), ...(policy.hidden || []), ...cloudModels()];
 }
 
+const FOLDER_HINT = 'Please use File → Open Folder to use New agent.';
+
+/** Show a soft hint in the empty state (and composer banner when visible). */
+function showHint(message) {
+  const text = (message && message.trim()) ? message : '';
+  window.__folderHint = text;
+  const hint = $('empty-hint');
+  if (hint) {
+    hint.textContent = text;
+    hint.hidden = !text;
+  }
+  const empty = $('empty-state');
+  if (empty && text) empty.hidden = false;
+  const banner = $('banner');
+  if (banner && text && !$('composer').hidden) {
+    $('banner-text').textContent = text;
+    banner.classList.add('banner--hint');
+    banner.hidden = false;
+    clearTimeout(window.__bannerTimer);
+    window.__bannerTimer = setTimeout(() => {
+      banner.hidden = true;
+      banner.classList.remove('banner--hint');
+    }, 10000);
+  }
+}
+
+/** Clear the soft folder hint. */
+function clearHint() {
+  window.__folderHint = '';
+  const hint = $('empty-hint');
+  if (hint) hint.hidden = true;
+  const banner = $('banner');
+  if (banner) banner.classList.remove('banner--hint');
+}
+
 function isCloudProvider(m) {
   return !!m && (m.provider === 'openrouter' || m.provider === 'google');
 }
@@ -606,7 +641,7 @@ function renderState(status) {
   const showComposer = !!m && engineReady;
   $('composer').hidden = !showComposer;
   const empty = $('empty-state');
-  if (empty) empty.hidden = showComposer && (ready || loading);
+  if (empty) empty.hidden = showComposer && (ready || loading) && !window.__folderHint;
   const emptyText = $('empty-state-text');
   if (emptyText) {
     if (!engineReady) emptyText.textContent = 'Set up the local engine or add a Google Gemini API key in Settings.';
@@ -675,8 +710,18 @@ window.addEventListener('message', (e) => {
   }
   if (m.type === 'addAccepted') { $('add-blocked').hidden = false; $('add-blocked').innerHTML = `<p>${esc(m.slug)} is already on the approved list — select it above.</p>`; }
   if (m.type === 'restoreInput') { $('input').value = m.text; resetInputHistoryBrowse(); resizeInput(); }
+  if (m.type === 'workspace') {
+    window.__workspaceOpen = !!m.open;
+    if (m.open) clearHint();
+  }
+  if (m.type === 'hint') {
+    if (m.message) showHint(m.message);
+    else clearHint();
+  }
   if (m.type === 'error') {
     if (m.message) {
+      const banner = $('banner');
+      if (banner) banner.classList.remove('banner--hint');
       $('banner-text').textContent = m.message;
       $('banner').hidden = false;
       clearTimeout(window.__bannerTimer);
@@ -690,6 +735,8 @@ window.addEventListener('message', (e) => {
     $('banner').hidden = true;
     const retry = $('banner-retry');
     if (retry) retry.hidden = true;
+    const banner = $('banner');
+    if (banner) banner.classList.remove('banner--hint');
   }
   if (m.type === 'token') appendToken(m.text);
   if (m.type === 'context') {
@@ -1243,7 +1290,10 @@ $('chat-picker').onchange = (e) => { turnReasoning = ''; vscode.postMessage({ ty
 
 // Sidebar: New chat / New agent / search / click-to-switch
 { const _ncb = $('new-chat-btn'); if (_ncb) _ncb.onclick = () => { turnReasoning = ''; resetInputHistoryBrowse(); vscode.postMessage({ type: 'newChat' }); }; }
-{ const _nab = $('new-agent-btn'); if (_nab) _nab.onclick = () => { turnReasoning = ''; resetInputHistoryBrowse(); vscode.postMessage({ type: 'newChat', agent: true }); }; }
+{ const _nab = $('new-agent-btn'); if (_nab) _nab.onclick = () => {
+  if (window.__workspaceOpen === false) { showHint(FOLDER_HINT); return; }
+  turnReasoning = ''; resetInputHistoryBrowse(); vscode.postMessage({ type: 'newChat', agent: true });
+}; }
 { const _ss = $('sidebar-search'); if (_ss) _ss.oninput = () => {
   const q = _ss.value;
   if (!q.trim()) { if (window.__lastChats) renderSidebar(window.__lastChats.metas, window.__lastChats.activeId); return; }
