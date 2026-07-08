@@ -709,7 +709,7 @@ window.addEventListener('message', (e) => {
     }
   }
   if (m.type === 'addAccepted') { $('add-blocked').hidden = false; $('add-blocked').innerHTML = `<p>${esc(m.slug)} is already on the approved list — select it above.</p>`; }
-  if (m.type === 'restoreInput') { $('input').value = m.text; resetInputHistoryBrowse(); resizeInput(); }
+  if (m.type === 'restoreInput') { $('input').value = m.text; resetInputHistoryBrowse(); resizeInput(); setGenerating(false); }
   if (m.type === 'workspace') {
     window.__workspaceOpen = !!m.open;
     if (m.open) clearHint();
@@ -724,6 +724,7 @@ window.addEventListener('message', (e) => {
       if (banner) banner.classList.remove('banner--hint');
       $('banner-text').textContent = m.message;
       $('banner').hidden = false;
+      setGenerating(false);
       clearTimeout(window.__bannerTimer);
       const retry = $('banner-retry');
       if (!retry || retry.hidden) {
