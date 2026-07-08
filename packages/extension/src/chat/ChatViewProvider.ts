@@ -24,7 +24,8 @@ import { searchChats } from '../chatSearch';
 import { exportMarkdown } from '../exportChat';
 import { MemoryStore } from '../memory';
 import { DocsService } from '../docsService';
-import { McpClient, parseMcpConfigs } from '../mcpClient';
+import { McpClient } from '../mcpClient';
+import { resolveMcpConfigs } from '../mcpDefaults';
 import { webSearch } from '../webSearch';
 import { speakText } from '../voice';
 import { loadProjectRules, defaultRulesRel } from '../projectRules';
@@ -329,6 +330,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         connected: c.isConnected(),
         tools: c.toolCount(),
         error: c.error(),
+        builtin: c.isBuiltin(),
       })),
     };
     if (emit) emit(msg);
@@ -377,7 +379,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async initMcp(): Promise<void> {
-    const cfgs = parseMcpConfigs(vscode.workspace.getConfiguration('fortressChat').get('mcpServers'));
+    const cfg = vscode.workspace.getConfiguration('fortressChat');
+    const cfgs = resolveMcpConfigs(cfg.get('mcpServers'), cfg.get('pingOneMcp'));
     for (const c of this.mcpClients) c.dispose();
     this.mcpClients = cfgs.map((cfg) => new McpClient(cfg));
     this.mcpTools = [];
@@ -410,7 +413,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         vscode.window.onDidChangeActiveTextEditor(refresh),
         vscode.window.onDidChangeTextEditorSelection(refresh),
         vscode.workspace.onDidChangeConfiguration((e) => {
-          if (e.affectsConfiguration('fortressChat.mcpServers')) void this.initMcp();
+          if (e.affectsConfiguration('fortressChat.mcpServers') || e.affectsConfiguration('fortressChat.pingOneMcp')) void this.initMcp();
           if (e.affectsConfiguration('fortressChat.skillDirectories')) this.refreshSkills();
         }),
       );

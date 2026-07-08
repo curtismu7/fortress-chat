@@ -345,13 +345,14 @@ function renderActionSub(body, q) {
     if (!servers.length) {
       const hint = document.createElement('div');
       hint.className = 'action-hint';
-      hint.textContent = 'No MCP servers configured. Add fortressChat.mcpServers in VS Code settings.';
+      hint.textContent = 'No MCP servers active. Configure fortressChat.pingOneMcp or fortressChat.mcpServers in settings.';
       body.appendChild(hint);
     } else {
       servers.forEach((s) => {
         const status = s.connected ? '●' : '○';
         const err = s.error ? ` — ${s.error}` : '';
-        const item = { label: s.name, icon: status, hint: `${s.tools} tool${s.tools === 1 ? '' : 's'}${err}` };
+        const tag = s.builtin ? ' (built-in)' : '';
+        const item = { label: `${s.name}${tag}`, icon: status, hint: `${s.tools} tool${s.tools === 1 ? '' : 's'}${err}` };
         const row = actionRow(item, false, false);
         row.disabled = true;
         body.appendChild(row);
@@ -1297,7 +1298,8 @@ function renderMcpList() {
   box.innerHTML = servers.map((s) => {
     const status = s.connected ? 'connected' : 'offline';
     const err = s.error ? ` — ${esc(s.error)}` : '';
-    return `<div class="mcp-item"><span>${s.connected ? '●' : '○'} ${esc(s.name)}</span><span class="settings-hint">${status} · ${s.tools} tool(s)${err}</span></div>`;
+    const tag = s.builtin ? ' · built-in' : '';
+    return `<div class="mcp-item"><span>${s.connected ? '●' : '○'} ${esc(s.name)}</span><span class="settings-hint">${status} · ${s.tools} tool(s)${tag}${err}</span></div>`;
   }).join('');
 }
 

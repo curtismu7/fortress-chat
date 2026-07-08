@@ -2,7 +2,16 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
 
-export interface McpServerConfig { name: string; command: string; args?: string[]; env?: Record<string, string> }
+export interface McpServerConfig {
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  /** When true, omit this server from the active list (used to disable built-ins). */
+  disabled?: boolean;
+  /** True for FortressChat-provided defaults such as PingOne MCP. */
+  builtin?: boolean;
+}
 export interface McpTool { name: string; description: string; inputSchema: object }
 
 /** Minimal MCP stdio client (tools/list + tools/call). */
@@ -64,6 +73,7 @@ export class McpClient {
   }
 
   serverName(): string { return this.cfg.name; }
+  isBuiltin(): boolean { return !!this.cfg.builtin; }
   isConnected(): boolean { return !!this.proc; }
   toolCount(): number { return this.tools.length; }
   error(): string | null { return this.lastError; }
@@ -105,5 +115,6 @@ export class McpClient {
 export function parseMcpConfigs(raw: unknown): McpServerConfig[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((x): x is McpServerConfig =>
-    !!x && typeof x.name === 'string' && typeof x.command === 'string');
+    !!x && typeof x === 'object' && typeof (x as McpServerConfig).name === 'string'
+    && typeof (x as McpServerConfig).command === 'string' && (x as McpServerConfig).disabled !== true);
 }
