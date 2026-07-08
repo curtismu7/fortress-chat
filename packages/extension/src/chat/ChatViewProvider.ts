@@ -195,6 +195,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.deliver(msg);
   }
   private banner(message: string): void { this.post({ type: 'error', message: (message && message.trim()) ? message : 'FortressChat error (no details)' }); }
+  private hint(message: string): void { this.post({ type: 'hint', message: (message && message.trim()) ? message : '' }); }
 
   private async ensureClient(): Promise<DaemonClient> {
     if (!this.client) this.client = await this.connect();
@@ -382,6 +383,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     emit({ type: 'personas', personas: this.prefs.personas() });
     emit({ type: 'skills', skills: this.skills });
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    emit({ type: 'workspace', open: !!root });
     emit({ type: 'projectRules', path: loadProjectRules(root).path ?? defaultRulesRel(root) });
     emit({ type: 'memory', data: this.memoryData() });
     emit({ type: 'folders', folders: this.store.listFolders() });
@@ -680,6 +682,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'newChat': {
           this.generating?.abort(); this.clearPromptQueue();
           const agent = !!m.agent;
+          const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          if (agent && !root) {
+            this.hint('Please use File → Open Folder to use New agent.');
+            return;
+          }
           this.store.newChat(agent);
           this.agentMode = agent; this.chatMode = agent ? 'agent' : 'ask';
           this.post({ type: 'history', messages: [] });
