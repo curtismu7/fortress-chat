@@ -39,6 +39,8 @@ const MODE_PROMPTS: Record<string, string> = {
   debug: 'You are in debug mode. Focus on reproducing the issue, tracing root cause, and proposing minimal targeted fixes.',
 };
 
+const AUTO_APPROVE_KEY = 'fortressChat.autoApprove';
+
 type ChatMode = 'ask' | 'agent' | 'plan' | 'debug' | 'multitask';
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
@@ -57,6 +59,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private promptQueue: string[] = [];
   private agentMode = false;
   private chatMode: ChatMode = 'ask';
+  private autoApprove = false;
   private selected: PolicyEntry | null = null;
   private devMode = false;
   private devModel: string | null = null;
@@ -78,6 +81,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     void context.globalState.update('fortressCode.devMode', undefined);
     this.devMode = false;
     this.prefs = new Prefs(this.context.globalState);
+    this.autoApprove = !!this.context.workspaceState.get(AUTO_APPROVE_KEY);
     this.startMediaWatcher();
   }
 
@@ -320,6 +324,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       },
       onFileTouch: checkpoint ? (rel: string, abs: string) => checkpoint.capture(rel, abs) : undefined,
       onFileRevertCapture: checkpoint ? (rel: string) => checkpoint.revert(rel) : undefined,
+      autoApprove: this.autoApprove,
     };
   }
 
@@ -425,6 +430,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private postChatModeTarget(emit: (msg: unknown) => void): void {
     const agentCapable = this.devMode && this.devModel ? true : !!this.selected?.agentCapable;
     emit({ type: 'chatMode', mode: this.chatMode, agentOn: this.agentMode, compareId: this.compareModelId, agentCapable });
+    emit({ type: 'runMode', mode: this.autoApprove ? 'auto' : 'manual' });
   }
 
   private async postDevTarget(emit: (msg: unknown) => void): Promise<void> {
@@ -736,6 +742,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.store.setAgentMode(this.store.activeId, this.agentMode);
           if (mode === 'multitask' && !this.compareModelId) this.post({ type: 'openActionSub', sub: 'multitask' });
           this.postChatMode();
+          return;
+        }
+        case 'setRunMode': {
+          const manual = String(m.mode) !== 'auto';
+          this.autoApprove = !manual;
+          void this.context.workspaceState.update(AUTO_APPROVE_KEY, this.autoApprove);
+          this.post({ type: 'runMode', mode: this.autoApprove ? 'auto' : 'manual' });
           return;
         }
         case 'openMcpSettings':

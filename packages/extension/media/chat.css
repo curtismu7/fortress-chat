@@ -237,11 +237,18 @@ input, textarea, select {
 #steps {
   font-size: 11px;
   color: var(--fc-muted);
-  padding: 0 14px 6px;
+  margin-left: 260px;
+  width: calc(100% - 260px);
+  padding: 0 24px 6px;
+  box-sizing: border-box;
+}
+#steps > div {
   max-width: var(--fc-max-width);
   margin: 0 auto;
-  width: 100%;
-  box-sizing: border-box;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
 }
 
 #composer {
@@ -307,7 +314,47 @@ input, textarea, select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
+  box-sizing: border-box;
 }
+.composer-mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 2px 0;
+  flex-wrap: wrap;
+}
+.mode-pills, .run-pills {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.mode-pill, .run-pill {
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--fc-border);
+  background: transparent;
+  color: var(--fc-muted);
+  cursor: pointer;
+}
+.mode-pill:hover, .run-pill:hover {
+  color: var(--fc-text);
+  border-color: color-mix(in srgb, var(--fc-accent) 40%, var(--fc-border));
+}
+.mode-pill.active {
+  color: var(--fc-text);
+  background: rgba(96, 148, 220, 0.12);
+  border-color: rgba(96, 148, 220, 0.35);
+}
+.run-pill.active {
+  color: var(--fc-text);
+  background: rgba(120, 180, 120, 0.12);
+  border-color: rgba(120, 180, 120, 0.35);
+}
+.run-pills[hidden] { display: none !important; }
 .composer-status[hidden] { display: none !important; }
 .composer-status.active { color: var(--vscode-foreground, #fff); }
 .composer-status.warn { color: #d6a85b; }
