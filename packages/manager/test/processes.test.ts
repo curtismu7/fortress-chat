@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parsePs } from '../src/processes';
+import { parsePs, rssForPid } from '../src/processes';
 
 const PS = `  123  4096 /usr/bin/some-daemon
   456 9437184 llama-server -m /Users/x/models/gemma.gguf --port 8094
@@ -21,5 +21,16 @@ describe('parsePs', () => {
 
   it('ignores grep-like matches without model flags', () => {
     expect(parsePs(PS, []).map((p) => p.pid)).not.toContain(801);
+  });
+});
+
+describe('rssForPid', () => {
+  it('returns RSS for the current process', async () => {
+    const rss = await rssForPid(process.pid);
+    expect(rss).toBeGreaterThan(0);
+  });
+
+  it('returns 0 for a non-existent pid', async () => {
+    expect(await rssForPid(999999999)).toBe(0);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseVmStat, checkFit, OVERHEAD_BYTES } from '../src/memory';
+import { parseVmStat, checkFit, OVERHEAD_BYTES, availableAfterManagedStop } from '../src/memory';
 
 const VM_STAT = `Mach Virtual Memory Statistics: (page size of 16384 bytes)
 Pages free:                              100000.
@@ -25,5 +25,27 @@ describe('checkFit (64 GB machine)', () => {
     const r = checkFit(40 * 1024 ** 3, 20 * 1024 ** 3, total);
     expect(r.fits).toBe(false);
     if (!r.fits) expect(r.requiredBytes).toBe(40 * 1024 ** 3 + OVERHEAD_BYTES);
+  });
+});
+
+describe('availableAfterManagedStop', () => {
+  it('credits reclaimed RSS when vm_stat barely changes after unload', async () => {
+    let reads = 0;
+    const read = async () => {
+      reads++;
+      return reads === 1 ? 5 * 1024 ** 3 : 5.1 * 1024 ** 3;
+    };
+    const available = await availableAfterManagedStop(read, 4 * 1024 ** 3);
+    expect(available).toBe(9 * 1024 ** 3);
+  });
+
+  it('uses fresh vm_stat when the OS reports freed memory', async () => {
+    let reads = 0;
+    const read = async () => {
+      reads++;
+      return reads === 1 ? 5 * 1024 ** 3 : 20 * 1024 ** 3;
+    };
+    const available = await availableAfterManagedStop(read, 4 * 1024 ** 3);
+    expect(available).toBe(20 * 1024 ** 3);
   });
 });
