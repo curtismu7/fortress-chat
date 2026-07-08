@@ -1,5 +1,5 @@
 import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadCatalog, type CatalogModel, type StatusResponse, type StartRejection, type DownloadProgress, type EmbedResponse, hfUrl } from '@fortress-chat/shared';
 import { Supervisor } from './supervisor';
@@ -23,6 +23,17 @@ function modelPath(m: CatalogModel, fileIndex = 0): string {
 }
 function modelDownloaded(m: CatalogModel): boolean {
   return m.files.length > 0 && m.files.every((f) => existsSync(join(modelsDir(), m.id, f.name)));
+}
+
+/** Remove partial .part files for an in-progress or cancelled download. */
+function cleanupPartialFiles(m: CatalogModel): void {
+  const dir = join(modelsDir(), m.id);
+  if (!existsSync(dir)) return;
+  for (const name of readdirSync(dir)) {
+    if (name.endsWith('.part')) {
+      try { unlinkSync(join(dir, name)); } catch { /* ignore */ }
+    }
+  }
 }
 async function readBody(req: IncomingMessage): Promise<any> {
   const chunks: Buffer[] = [];
@@ -49,6 +60,8 @@ export function createApi(deps: ApiDeps): Server {
   let download: DownloadProgress | null = null;
   let downloading = false;
   let downloadError: string | null = null;
+  let downloadAbort: AbortController | null = null;
+  let downloadModelId: string | null = null;
 
   return createServer(async (req, res) => {
     if (req.headers['x-fc-token'] !== deps.token) return send(res, 401, { error: 'unauthorized' });
@@ -86,16 +99,43 @@ export function createApi(deps: ApiDeps): Server {
           if (!m) return send(res, 404, { error: 'unknown model' });
           if (downloading) return send(res, 409, { error: 'busy' });
           downloading = true; downloadError = null;
+          downloadAbort = new AbortController();
+          downloadModelId = m.id;
           (async () => {
             const totalBytes = m.files.reduce((a, f) => a + f.bytes, 0);
             let doneBytes = 0;
-            for (const f of m.files) {
-              await downloadFile(hfUrl(m, f.name), join(modelsDir(), m.id, f.name), f.sha256, f.bytes,
-                (r) => { download = { modelId: m.id, receivedBytes: doneBytes + r, totalBytes }; });
-              doneBytes += f.bytes;
+            try {
+              for (const f of m.files) {
+                await downloadFile(hfUrl(m, f.name), join(modelsDir(), m.id, f.name), f.sha256, f.bytes,
+                  (r) => { download = { modelId: m.id, receivedBytes: doneBytes + r, totalBytes }; },
+                  downloadAbort!.signal);
+                doneBytes += f.bytes;
+              }
+            } catch (e) {
+              cleanupPartialFiles(m);
+              if (e instanceof Error && e.name === 'AbortError') downloadError = 'Download cancelled';
+              else downloadError = `Download failed: ${e instanceof Error ? e.message : e}`;
+            } finally {
+              download = null; downloading = false; downloadAbort = null; downloadModelId = null;
             }
-          })().catch((e) => { downloadError = `Download failed: ${e instanceof Error ? e.message : e}`; }).finally(() => { download = null; downloading = false; });
+          })();
           return send(res, 202, {});
+        }
+        case 'POST /download/cancel': {
+          if (!downloading || !downloadAbort) return send(res, 409, { error: 'not downloading' });
+          downloadAbort.abort();
+          return send(res, 200, {});
+        }
+        case 'POST /delete-model': {
+          const { modelId } = await readBody(req);
+          const m = catalog.find((x) => x.id === modelId);
+          if (!m) return send(res, 404, { error: 'unknown model' });
+          if (downloading && downloadModelId === modelId) return send(res, 409, { error: 'downloading' });
+          if (deps.supervisor.modelId === modelId) return send(res, 409, { error: 'model in use' });
+          if (deps.embed.modelId === modelId) return send(res, 409, { error: 'embed in use' });
+          const dir = join(modelsDir(), modelId);
+          if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+          return send(res, 200, {});
         }
         case 'POST /start': {
           const { modelId } = await readBody(req);

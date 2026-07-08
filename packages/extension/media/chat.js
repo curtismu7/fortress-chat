@@ -618,7 +618,7 @@ function modelRowMeta(m, status) {
   if (status.modelId === cid && (status.state === 'loading-model' || status.state === 'starting')) {
     return { sub: 'On this Mac', action: 'Starting…' };
   }
-  return { sub: 'On this Mac · Ready', action: '' };
+  return { sub: 'On this Mac · Ready', action: '', deletable: true };
 }
 
 function renderModels(status) {
@@ -637,7 +637,7 @@ function renderModels(status) {
         <span class="model-row-name">${esc(m.displayName)}</span>
         <span class="model-row-sub">${esc(meta.sub)}${agent}</span>
       </span>
-      ${sel ? '<span class="model-row-check">✓</span>' : (meta.action ? `<span class="model-row-action">${esc(meta.action)}</span>` : '')}
+      ${sel ? '<span class="model-row-check">✓</span>' : (meta.deletable ? `<button type="button" class="model-row-delete" data-id="${esc(m.id)}" title="Delete model from disk">Delete</button>` : (meta.action ? `<span class="model-row-action">${esc(meta.action)}</span>` : ''))}
     </button>`;
   };
   const hiddenOpen = window.__hiddenModelsOpen !== false;
@@ -658,6 +658,14 @@ function renderModels(status) {
       selectedId = m.id;
       if (window.__status) renderState(window.__status);
       vscode.postMessage({ type: 'selectModel', id: m.id });
+    };
+  });
+  box.querySelectorAll('.model-row-delete').forEach((btn) => {
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      const m = all.find((x) => x.id === btn.dataset.id);
+      if (!m || m.provider !== 'local') return;
+      vscode.postMessage({ type: 'deleteModel', catalogId: m.local.catalogId });
     };
   });
 }
@@ -681,7 +689,10 @@ function renderState(status) {
     setup.hidden = false;
     openModelPicker();
     const pct = Math.round((status.download.receivedBytes / status.download.totalBytes) * 100);
-    setup.innerHTML = `<p>Downloading model… ${pct}%</p><progress max="100" value="${pct}"></progress>`;
+    const name = status.download.modelId === '__binary__' ? 'engine' : (allPolicyModels().find((m) => m.local?.catalogId === status.download.modelId)?.displayName || 'model');
+    setup.innerHTML = `<p>Downloading ${esc(name)}… ${pct}%</p><progress max="100" value="${pct}"></progress><button type="button" id="cancel-download" class="setup-action">Cancel download</button>`;
+    const cancelBtn = $('cancel-download');
+    if (cancelBtn) cancelBtn.onclick = () => vscode.postMessage({ type: 'cancelDownload' });
   } else {
     setup.hidden = true;
   }

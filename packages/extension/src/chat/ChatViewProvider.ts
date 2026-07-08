@@ -865,6 +865,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'selectDevModel':
           return this.stopForPolicyViolation('Developer mode and cloud models are not allowed.', String(m.slug || ''));
         case 'downloadModel': await (await this.ensureClient()).download(String(m.catalogId)); return;
+        case 'cancelDownload': {
+          await (await this.ensureClient()).cancelDownload();
+          await this.pushStatus();
+          return;
+        }
+        case 'deleteModel': {
+          const catalogId = String(m.catalogId ?? '');
+          const entry = chatLocalEntries().find((e) => e.local?.catalogId === catalogId);
+          const name = entry?.displayName ?? catalogId;
+          const pick = await vscode.window.showWarningMessage(
+            `Delete ${name} from this Mac? This frees disk space; you can download it again later.`,
+            { modal: true },
+            'Delete',
+          );
+          if (pick !== 'Delete') return;
+          try {
+            await (await this.ensureClient()).deleteModel(catalogId);
+            if (this.selected?.local?.catalogId === catalogId) this.selected = null;
+            await this.pushStatus();
+            void vscode.window.showInformationMessage(`Deleted ${name}.`);
+          } catch (e) {
+            this.banner(`Could not delete model: ${e instanceof Error ? e.message : e}`);
+          }
+          return;
+        }
         case 'indexWorkspace': {
           if (this.ragIndexing) return;
           this.ragIndexing = true;
