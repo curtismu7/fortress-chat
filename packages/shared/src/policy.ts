@@ -27,12 +27,18 @@ export function localEntries(): PolicyEntry[] {
   return loadCatalog().map(mapLocalEntry);
 }
 
+/** Local models usable for chat — excludes embedding-only models (RAG infrastructure). */
+export function chatLocalEntries(): PolicyEntry[] {
+  const embeddingIds = new Set(loadCatalog().filter((m) => m.embedding).map((m) => m.id));
+  return localEntries().filter((e) => !embeddingIds.has(e.id));
+}
+
 export function visibleLocalEntries(): PolicyEntry[] {
-  return localEntries().filter((e) => !e.local?.hidden);
+  return chatLocalEntries().filter((e) => !e.local?.hidden);
 }
 
 export function hiddenLocalEntries(): PolicyEntry[] {
-  return localEntries().filter((e) => e.local?.hidden);
+  return chatLocalEntries().filter((e) => e.local?.hidden);
 }
 
 /** Cloud OpenRouter models are disabled — FortressChat is local US models only. */

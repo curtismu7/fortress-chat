@@ -101,6 +101,7 @@ export function createApi(deps: ApiDeps): Server {
           const { modelId } = await readBody(req);
           const m = catalog.find((x) => x.id === modelId);
           if (!m) return send(res, 404, { error: 'unknown model' });
+          if (m.embedding) return send(res, 400, { error: 'embedding models cannot be used for chat' });
           if (!binaryInstalled() || !modelDownloaded(m)) return send(res, 428, { error: 'binary or model not downloaded' });
           if (embedActive(deps.embed.state)) await deps.embed.stop(); // one-model policy: unload embed first
           if (chatActive(deps.supervisor.state)) await deps.supervisor.stop(); // replace any loaded chat model

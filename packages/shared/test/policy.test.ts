@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { loadPolicy, localEntries, openRouterEntries, googleEntries, explainBlock, formatPolicyFatal, LOCAL_US_ONLY, visibleLocalEntries, hiddenLocalEntries } from '../src/policy';
+import { loadPolicy, localEntries, chatLocalEntries, openRouterEntries, googleEntries, explainBlock, formatPolicyFatal, LOCAL_US_ONLY, visibleLocalEntries, hiddenLocalEntries } from '../src/policy';
 import { isAllowed } from '../src/governance';
 
 describe('policy registry', () => {
@@ -20,8 +20,14 @@ describe('policy registry', () => {
   });
 
   it('splits visible and hidden local entries', () => {
-    expect(visibleLocalEntries().length).toBe(7);
+    expect(visibleLocalEntries().length).toBe(6);
+    expect(visibleLocalEntries().some((e) => e.id === 'nomic-embed-text-v1.5')).toBe(false);
     expect(hiddenLocalEntries().map((e) => e.id)).toEqual(['qwythos-9b-q4']);
+  });
+
+  it('chatLocalEntries excludes embedding-only models', () => {
+    expect(chatLocalEntries().some((e) => e.id === 'nomic-embed-text-v1.5')).toBe(false);
+    expect(chatLocalEntries().length).toBe(localEntries().length - 1);
   });
 
   it('OpenRouter entries are disabled in local-US-only mode', () => {
