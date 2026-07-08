@@ -68,6 +68,17 @@
         <button type="button" id="send" class="send-btn" title="Send">↑</button>
       </div>
     </div>
+    <div id="composer-mode-bar" class="composer-mode-bar">
+      <div class="mode-pills" role="group" aria-label="Chat mode">
+        <button type="button" class="mode-pill" data-mode="ask">Ask</button>
+        <button type="button" class="mode-pill" data-mode="plan">Plan</button>
+        <button type="button" class="mode-pill" data-mode="agent">Agent</button>
+      </div>
+      <div class="run-pills" role="group" aria-label="Agent approval">
+        <button type="button" class="run-pill" data-run="manual">Manual</button>
+        <button type="button" class="run-pill" data-run="auto">Auto</button>
+      </div>
+    </div>
     <div id="composer-status" class="composer-status" hidden></div>
     <div id="action-menu" hidden>
       <input id="action-search" type="text" placeholder="Add agents, context, tools…" autocomplete="off" />

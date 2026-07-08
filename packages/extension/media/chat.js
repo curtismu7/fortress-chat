@@ -116,11 +116,13 @@ function closeModelPicker() {
 }
 
 let chatMode = 'ask';
+let runMode = 'manual';
 let actionSub = null;
 let actionMenuOpen = false;
 let mcpServers = [];
 
 const ACTION_MODES = [
+  { id: 'agent', label: 'Agent', icon: '⚡' },
   { id: 'plan', label: 'Plan', icon: '≡' },
   { id: 'debug', label: 'Debug', icon: '⛭' },
   { id: 'multitask', label: 'Multitask', icon: '↻' },
@@ -138,11 +140,32 @@ const ACTION_TOOLS = [
 function updateModeBadge() {
   const badge = $('mode-badge');
   if (!badge) return;
-  const labels = { ask: 'Ask', agent: 'Agent', plan: 'Plan', debug: 'Debug', multitask: 'Multitask' };
+  badge.hidden = true;
+  updateModeBar();
+}
+
+/** Highlight Ask / Plan / Agent and Manual / Auto pills under the composer. */
+function updateModeBar() {
   const mode = window.__compareId ? 'multitask' : chatMode;
-  if (mode === 'ask') { badge.hidden = true; return; }
-  badge.textContent = labels[mode] || mode;
-  badge.hidden = false;
+  document.querySelectorAll('.mode-pill').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+    btn.disabled = !!window.__compareId && btn.dataset.mode !== 'multitask';
+  });
+  const runGroup = document.querySelector('.run-pills');
+  const agentish = mode === 'agent' || mode === 'plan' || mode === 'debug';
+  if (runGroup) runGroup.hidden = !agentish;
+  document.querySelectorAll('.run-pill').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.run === runMode);
+  });
+}
+
+/** Short label for agent step JSON shown in the status line. */
+function formatAgentStep(step) {
+  const s = String(step || '').trim();
+  if (!s) return '';
+  const nameMatch = s.match(/"name"\s*:\s*"([^"]+)"/) || s.match(/^(\w+)\s*\(/);
+  if (nameMatch) return `Running ${nameMatch[1]}…`;
+  return s.length > 72 ? `${s.slice(0, 69)}…` : s;
 }
 
 function syncAgentToggle() {
@@ -211,7 +234,7 @@ function insertAtCursor(text) {
 
 function handleActionItem(id) {
   switch (id) {
-    case 'plan': case 'debug': case 'ask': case 'multitask':
+    case 'agent': case 'plan': case 'debug': case 'ask': case 'multitask':
       vscode.postMessage({ type: 'setChatMode', mode: id });
       if (id === 'multitask') { actionSub = 'multitask'; renderActionMenu(); }
       else closeActionMenu();
@@ -428,7 +451,7 @@ function updateComposerStatus() {
   let active = false;
   if (window.__generating) {
     active = true;
-    if (lastAgentStep) text = lastAgentStep;
+    if (lastAgentStep) text = formatAgentStep(lastAgentStep);
     else if (turnReasoning && !streaming) text = 'Reasoning…';
     else if (streaming) text = 'Writing…';
     else text = 'Thinking…';
@@ -746,7 +769,7 @@ window.addEventListener('message', (e) => {
   }
   if (m.type === 'agentStep') {
     $('steps').hidden = false;
-    $('steps').innerHTML += `<div>${esc(m.step)}</div>`;
+    $('steps').innerHTML += `<div>${esc(formatAgentStep(m.step))}</div>`;
     lastAgentStep = m.step;
     updateComposerStatus();
     scrollChatToBottom();
@@ -776,6 +799,10 @@ window.addEventListener('message', (e) => {
     window.__compareId = m.compareId || null;
     syncAgentToggle();
     updateModeBadge();
+  }
+  if (m.type === 'runMode') {
+    runMode = m.mode === 'auto' ? 'auto' : 'manual';
+    updateModeBar();
   }
   if (m.type === 'mcpStatus') { mcpServers = m.servers || []; renderMcpList(); if (actionMenuOpen && actionSub === 'mcp') renderActionMenu(); }
   if (m.type === 'openActionSub') openActionMenu(m.sub);
@@ -1331,6 +1358,21 @@ $('input').addEventListener('input', () => {
   resizeInput();
 });
 { const _at = $('agent-toggle'); if (_at) _at.onchange = (e) => vscode.postMessage({ type: 'agentToggle', on: e.target.checked }); }
+document.querySelectorAll('.mode-pill').forEach((btn) => {
+  btn.onclick = () => {
+    const mode = btn.dataset.mode;
+    if (!mode || window.__workspaceOpen === false && mode === 'agent') { showHint(FOLDER_HINT); return; }
+    vscode.postMessage({ type: 'setChatMode', mode });
+  };
+});
+document.querySelectorAll('.run-pill').forEach((btn) => {
+  btn.onclick = () => {
+    const mode = btn.dataset.run;
+    if (!mode) return;
+    vscode.postMessage({ type: 'setRunMode', mode });
+  };
+});
+updateModeBar();
 $('banner-close').onclick = () => { $('banner').hidden = true; };
 
 { const _sb = $('settings-btn'); if (_sb) _sb.onclick = () => openSettings(true); }

@@ -26,6 +26,7 @@ export interface ToolExtras {
   mcpCall?: (name: string, args: Record<string, unknown>) => Promise<string>;
   onFileTouch?: (rel: string, abs: string) => void;
   onFileRevertCapture?: (rel: string) => void;
+  autoApprove?: boolean;
 }
 
 export function resolveInWorkspace(root: string, relPath: string): string {
@@ -48,8 +49,14 @@ function walk(dir: string, root: string, acc: string[], limit: number): void {
   }
 }
 
-export async function editFileWithApproval(abs: string, content: string, rel: string): Promise<string> {
+export async function editFileWithApproval(abs: string, content: string, rel: string, auto = false): Promise<string> {
   const uri = vscode.Uri.file(abs);
+  if (auto) {
+    const edit = new vscode.WorkspaceEdit();
+    edit.createFile(uri, { overwrite: true, contents: Buffer.from(content, 'utf8') });
+    await vscode.workspace.applyEdit(edit);
+    return 'applied';
+  }
   let original = '';
   try { original = readFileSync(abs, 'utf8'); } catch { /* new file */ }
   const left = vscode.Uri.parse(`untitled:${rel}.orig`).with({ scheme: 'fc-orig', path: rel });
@@ -112,7 +119,7 @@ export async function executeTool(name: string, args: any, workspaceRoot: string
       const rel = String(args.path);
       const abs = resolveInWorkspace(workspaceRoot, rel);
       extras?.onFileTouch?.(rel, abs);
-      const result = await editFileWithApproval(abs, String(args.content), rel);
+      const result = await editFileWithApproval(abs, String(args.content), rel, !!extras?.autoApprove);
       if (result !== 'applied') extras?.onFileRevertCapture?.(rel);
       return result;
     }
@@ -121,14 +128,16 @@ export async function executeTool(name: string, args: any, workspaceRoot: string
       const abs = resolveInWorkspace(workspaceRoot, rel);
       if (existsSync(abs)) return `error: ${rel} already exists — use edit_file to modify it`;
       extras?.onFileTouch?.(rel, abs);
-      const result = await editFileWithApproval(abs, String(args.content), rel);
+      const result = await editFileWithApproval(abs, String(args.content), rel, !!extras?.autoApprove);
       if (result !== 'applied') extras?.onFileRevertCapture?.(rel);
       return result;
     }
     case 'run_command': {
       const command = String(args.command);
-      const choice = await vscode.window.showWarningMessage(`FortressChat wants to run:\n\n${command}`, { modal: true }, 'Run', 'Reject');
-      if (choice !== 'Run') return 'rejected by user';
+      if (!extras?.autoApprove) {
+        const choice = await vscode.window.showWarningMessage(`FortressChat wants to run:\n\n${command}`, { modal: true }, 'Run', 'Reject');
+        if (choice !== 'Run') return 'rejected by user';
+      }
       try {
         const { stdout, stderr } = await execFileP('/bin/sh', ['-c', command], { cwd: workspaceRoot, timeout: 60_000, maxBuffer: 4 * 1024 * 1024 });
         return truncate([stdout, stderr].filter(Boolean).join('\n') || '(no output)');
