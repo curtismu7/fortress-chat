@@ -743,9 +743,11 @@ window.addEventListener('message', (e) => {
   if (m.type === 'docsStatus') {
     const s = m.stats || { files: 0, chunks: 0 };
     const el = $('docs-status'); if (el) el.textContent = s.chunks ? `${s.files} docs · ${s.chunks} chunks` : 'No docs indexed';
+    if (m.lastIndex?.errors?.length && el) el.textContent += ` (${m.lastIndex.errors.length} failed)`;
   }
   if (m.type === 'docsProgress') {
-    const el = $('docs-status'); if (el) el.textContent = `Indexing docs ${m.done}/${m.total}…`;
+    const el = $('docs-status');
+    if (el) el.textContent = m.file ? `Indexing ${m.file} (${m.done}/${m.total})…` : `Indexing docs ${m.done}/${m.total}…`;
   }
   if (m.type === 'attachedImages') {
     const el = $('meter'); if (el) el.textContent = `${m.count} image(s) attached for next message`;
@@ -845,7 +847,10 @@ function browseInputHistory(direction) {
   return true;
 }
 
+let lastMessages = [];
+
 function renderHistory(messages) {
+  lastMessages = messages;
   streaming = ''; cbCodes = [];
   syncInputHistory(messages);
   const shown = messages.map((m, i) => ({ m, i })).filter(({ m }) => m.role === 'user' || (m.role === 'assistant' && m.content));
@@ -853,7 +858,7 @@ function renderHistory(messages) {
   $('messages').innerHTML = shown.map(({ m, i }, k) => {
     if (m.role === 'assistant') {
       const reason = (k === lastA && turnReasoning) ? `<details class="reasoning"><summary>▸ Reasoning</summary><pre>${esc(turnReasoning)}</pre></details>` : '';
-      const foot = k === lastA ? `<div class="msg-foot"><button class="regen">↻ Regenerate</button><span class="usage" id="usage-last"></span></div>` : '';
+      const foot = k === lastA ? `<div class="msg-foot"><button class="remember" data-idx="${i}" title="Save to local memory">Remember</button><button class="regen">↻ Regenerate</button><span class="usage" id="usage-last"></span></div>` : '';
       const sources = (m.sources && m.sources.length) ? `<div class="src-list" data-src-idx="${k}">Sources: </div>` : '';
       return `<div class="msg assistant"><div class="assistant-body">${reason}${renderMarkdown(m.content)}${sources}${foot}</div></div>`;
     }
@@ -1426,6 +1431,13 @@ $('messages').addEventListener('click', (e) => {
     return;
   }
   if (e.target.closest('.regen')) { turnReasoning = ''; vscode.postMessage({ type: 'regenerate' }); return; }
+  const rm = e.target.closest('.remember');
+  if (rm) {
+    const idx = +rm.dataset.idx;
+    const msg = lastMessages[idx];
+    if (msg?.content) vscode.postMessage({ type: 'rememberFact', text: msg.content });
+    return;
+  }
   const em = e.target.closest('.editmsg');
   if (em) { turnReasoning = ''; vscode.postMessage({ type: 'editLoad', index: +em.dataset.idx }); return; }
   const fm = e.target.closest('.forkmsg');
