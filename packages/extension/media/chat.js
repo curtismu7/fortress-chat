@@ -28,6 +28,48 @@ function isCloudProvider(m) {
   return !!m && (m.provider === 'openrouter' || m.provider === 'google');
 }
 
+/** Scroll the chat pane so the latest message stays visible. */
+function scrollChatToBottom() {
+  const wrap = $('messages-wrap');
+  if (!wrap) return;
+  const run = () => {
+    const last = $('messages')?.lastElementChild;
+    if (last) last.scrollIntoView({ block: 'end', behavior: 'instant' });
+    wrap.scrollTop = wrap.scrollHeight;
+  };
+  requestAnimationFrame(() => requestAnimationFrame(run));
+}
+
+/** Show Google API key save / verify status under Settings. */
+function showGoogleKeyStatus({ set, message, error, pending }) {
+  const statusEl = $('google-key-status');
+  if (!statusEl) return;
+  const section = $('google-gemini-settings') || statusEl.closest('details.settings-section');
+  if (section) section.open = true;
+  statusEl.hidden = false;
+  statusEl.classList.remove('google-key-ok', 'google-key-err', 'google-key-pending');
+  if (pending) {
+    statusEl.classList.add('google-key-pending');
+    statusEl.textContent = message || 'Verifying API key…';
+    statusEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return;
+  }
+  if (set && !error) {
+    statusEl.classList.add('google-key-ok');
+    statusEl.textContent = message || 'Google API key saved and verified.';
+    const input = $('google-key-input');
+    if (input) {
+      input.value = '';
+      input.placeholder = 'API key saved';
+    }
+    statusEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return;
+  }
+  statusEl.classList.add('google-key-err');
+  statusEl.textContent = error || message || 'Could not save API key.';
+  statusEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
 function openModelPicker() {
   closeSettings(false);
   const p = $('model-picker');
@@ -385,7 +427,10 @@ function setGenerating(active) {
   const send = $('send');
   if (cancel) cancel.hidden = !active;
   if (send) send.title = active ? 'Queue message (sends after current reply)' : 'Send';
-  if (!active) { lastAgentStep = ''; }
+  if (!active) {
+    lastAgentStep = '';
+    scrollChatToBottom();
+  }
   updateComposerStatus();
 }
 
@@ -429,6 +474,7 @@ function enhanceRich(container) {
         throwOnError: false,
         trust: false,
       });
+      scrollChatToBottom();
     }
     if (!window.mermaid) return;
     if (!window.__mermaidInit) {
@@ -466,6 +512,7 @@ function enhanceRich(container) {
           holder.innerHTML = svg;
           block.hidden = true;
           toggle.hidden = false;
+          scrollChatToBottom();
         })
         .catch(() => { holder.remove(); toggle.remove(); }); // fail-soft: plain code block stays visible
     });
@@ -599,9 +646,19 @@ window.addEventListener('message', (e) => {
   }
   if (m.type === 'googleKeySet') {
     window.__googleKeySet = m.set;
-    const statusEl = $('google-key-status');
-    if (statusEl) statusEl.hidden = !m.set;
+    showGoogleKeyStatus({
+      set: m.set,
+      message: m.message,
+      error: m.error,
+    });
+    const status = window.__status || { state: 'idle', binaryInstalled: false, downloadedModelIds: [], download: null, downloadError: null, ram: { totalBytes: 0, availableBytes: 0 } };
+    renderModels(status);
     if (window.__status) renderState(window.__status);
+    else if (m.set) {
+      window.__status = status;
+      renderState(status);
+      openModelPicker();
+    }
   }
   if (m.type === 'state') { selectedId = m.selectedId; renderState(m.status); }
   if (m.type === 'history') renderHistory(m.messages);
@@ -644,9 +701,14 @@ window.addEventListener('message', (e) => {
     $('steps').innerHTML += `<div>${esc(m.step)}</div>`;
     lastAgentStep = m.step;
     updateComposerStatus();
+    scrollChatToBottom();
   }
   if (m.type === 'reasoning') appendReasoning(m.text);
-  if (m.type === 'reasoningDone') { const b = document.querySelector('.reasoning-live'); if (b) b.open = false; }
+  if (m.type === 'reasoningDone') {
+    const b = document.querySelector('.reasoning-live');
+    if (b) b.open = false;
+    scrollChatToBottom();
+  }
   if (m.type === 'usage' && m.usage) { const u = $('usage-last'); if (u) u.textContent = `↑${m.usage.promptTokens} ↓${m.usage.completionTokens} tok`; }
   if (m.type === 'chats') { window.__lastChats = m; renderChatPicker(m.metas, m.activeId); renderSidebar(m.metas, m.activeId); fillPersonaPicker(); fillSkillPicker(); }
   if (m.type === 'prefs') {
@@ -820,14 +882,14 @@ function renderHistory(messages) {
     });
   });
   enhanceRich($('messages'));
-  $('messages').scrollTop = $('messages').scrollHeight;
+  scrollChatToBottom();
 }
 function appendToken(t) {
   streaming += t;
   let el = document.querySelector('.msg.streaming pre');
   if (!el) { const d = document.createElement('div'); d.className = 'msg assistant streaming'; d.innerHTML = '<pre></pre>'; $('messages').appendChild(d); el = d.querySelector('pre'); }
   el.textContent = streaming;
-  $('messages').scrollTop = $('messages').scrollHeight;
+  scrollChatToBottom();
   updateComposerStatus();
 }
 let turnReasoning = '';
@@ -841,7 +903,7 @@ function appendReasoning(t) {
     $('messages').appendChild(box);
   }
   box.querySelector('pre').textContent = turnReasoning;
-  $('messages').scrollTop = $('messages').scrollHeight;
+  scrollChatToBottom();
   updateComposerStatus();
 }
 function updateMeter() {
@@ -1148,7 +1210,15 @@ document.addEventListener('click', (e) => {
   closeActionMenu();
 });
 { const _ok = $('or-key-save'); if (_ok) _ok.onclick = () => { const k = $('or-key-input').value.trim(); if (k) vscode.postMessage({ type: 'setOpenRouterKey', key: k }); }; }
-{ const _gk = $('google-key-save'); if (_gk) _gk.onclick = () => { const k = $('google-key-input').value.trim(); if (k) vscode.postMessage({ type: 'setGoogleKey', key: k }); }; }
+{ const _gk = $('google-key-save'); if (_gk) _gk.onclick = () => {
+  const k = $('google-key-input').value.trim();
+  if (!k) {
+    showGoogleKeyStatus({ set: false, error: 'Enter a Google AI API key.' });
+    return;
+  }
+  showGoogleKeyStatus({ set: false, pending: true, message: 'Verifying API key…' });
+  vscode.postMessage({ type: 'setGoogleKey', key: k });
+}; }
 { const _ab = $('add-btn'); if (_ab) _ab.onclick = () => { const s = $('add-slug').value.trim(); if (s) vscode.postMessage({ type: 'addModel', slug: s }); }; }
 $('send').onclick = () => {
   let t = $('input').value.trim();
