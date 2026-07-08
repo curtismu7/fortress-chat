@@ -70,6 +70,13 @@ describe('start with memory guard', () => {
     expect(res.status).toBe(428);
   });
 
+  it('400 when trying to start an embedding model for chat', async () => {
+    const embed = loadCatalog().find((x) => x.embedding)!;
+    const res = await req('/start', { method: 'POST', body: JSON.stringify({ modelId: embed.id }) });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/embedding models cannot be used for chat/i);
+  });
+
   it('one-model policy: starting chat unloads embed', async () => {
     const chat = loadCatalog()[0];
     const embed = loadCatalog().find((x) => x.embedding)!;

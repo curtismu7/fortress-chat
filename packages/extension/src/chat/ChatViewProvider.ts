@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { loadPolicy, visibleLocalEntries, hiddenLocalEntries, googleEntries, explainBlock, formatPolicyFatal, type PolicyEntry, type StatusResponse } from '@fortress-chat/shared';
+import { loadPolicy, chatLocalEntries, visibleLocalEntries, hiddenLocalEntries, googleEntries, explainBlock, formatPolicyFatal, type PolicyEntry, type StatusResponse } from '@fortress-chat/shared';
 import { DaemonClient } from '../daemon';
 import { RagService } from '../rag/service';
 import { Debouncer } from '../rag/watcher';
@@ -1026,7 +1026,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async selectModel(id: string): Promise<void> {
-    const entry = loadPolicy().find((e) => e.id === id);
+    const entry = [...chatLocalEntries(), ...googleEntries()].find((e) => e.id === id);
     if (!entry) return;
     this.selected = entry;
     this.devModel = null; // picking a governed model takes over from any dev-model routing
