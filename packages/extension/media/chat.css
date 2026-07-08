@@ -648,9 +648,10 @@ code.inl { background: var(--vscode-textCodeBlock-background, #2a2a2a); padding:
 }
 #google-key-status[hidden] { display: none !important; }
 #google-key-status.google-key-ok {
-  color: #0d3b1f;
-  background: rgba(115, 201, 145, 0.35);
-  border-color: #73c991;
+  color: var(--vscode-foreground, #0d2b4a);
+  background: var(--vscode-inputValidation-infoBackground, rgba(55, 148, 255, 0.28));
+  border-color: var(--vscode-inputValidation-infoBorder, #3794ff);
+  box-shadow: inset 0 0 0 1px rgba(55, 148, 255, 0.2);
 }
 #google-key-status.google-key-err {
   color: #7a1f1f;
