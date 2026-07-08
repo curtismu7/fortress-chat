@@ -98,3 +98,23 @@ describe('start with memory guard', () => {
     expect(status.embed.state).toBe('ready');
   });
 });
+
+describe('model download and delete', () => {
+  it('409 cancel when nothing is downloading', async () => {
+    expect((await req('/download/cancel', { method: 'POST', body: '{}' })).status).toBe(409);
+  });
+
+  it('delete-model removes files from disk', async () => {
+    const m = loadCatalog()[0];
+    expect((await req('/delete-model', { method: 'POST', body: JSON.stringify({ modelId: m.id }) })).status).toBe(200);
+    const status = await (await req('/status')).json();
+    expect(status.downloadedModelIds).not.toContain(m.id);
+    expect((await req('/start', { method: 'POST', body: JSON.stringify({ modelId: m.id }) })).status).toBe(428);
+  });
+
+  it('409 delete-model when chat model is loaded', async () => {
+    const m = loadCatalog()[0];
+    expect((await req('/start', { method: 'POST', body: JSON.stringify({ modelId: m.id }) })).status).toBe(200);
+    expect((await req('/delete-model', { method: 'POST', body: JSON.stringify({ modelId: m.id }) })).status).toBe(409);
+  });
+});

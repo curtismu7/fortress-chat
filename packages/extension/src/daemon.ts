@@ -38,6 +38,8 @@ export class DaemonClient {
   async status(): Promise<StatusResponse> { return (await this.call('/status')).json(); }
   async catalog(): Promise<CatalogModel[]> { return (await this.call('/catalog')).json(); }
   async download(modelId: string): Promise<void> { await this.call('/download', { method: 'POST', body: JSON.stringify({ modelId }) }); }
+  async cancelDownload(): Promise<void> { await this.call('/download/cancel', { method: 'POST', body: '{}' }); }
+  async deleteModel(modelId: string): Promise<void> { await this.call('/delete-model', { method: 'POST', body: JSON.stringify({ modelId }) }); }
   async installBinary(): Promise<void> { await this.call('/install-binary', { method: 'POST', body: '{}' }); }
   async stop(): Promise<void> { await this.call('/stop', { method: 'POST', body: '{}' }); }
   async foreignKill(pids: number[]): Promise<void> { await this.call('/foreign/kill', { method: 'POST', body: JSON.stringify({ pids }) }); }
