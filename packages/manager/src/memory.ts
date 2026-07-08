@@ -26,3 +26,17 @@ export function checkFit(modelMemoryBytes: number, availableBytes: number, total
   if (availableBytes - requiredBytes >= 0.15 * totalBytes) return { fits: true };
   return { fits: false, requiredBytes, availableBytes };
 }
+
+/** Re-read free memory after stopping a managed model; credit RSS when vm_stat lags. */
+export async function availableAfterManagedStop(
+  readAvailable: () => Promise<number>,
+  reclaimedBytes: number,
+): Promise<number> {
+  const before = await readAvailable();
+  if (reclaimedBytes <= 0) return before;
+  await new Promise((r) => setTimeout(r, 400));
+  const after = await readAvailable();
+  const gained = after - before;
+  if (gained < reclaimedBytes * 0.25) return before + reclaimedBytes;
+  return after;
+}

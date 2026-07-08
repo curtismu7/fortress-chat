@@ -5,8 +5,8 @@ import { loadCatalog, type CatalogModel, type StatusResponse, type StartRejectio
 import { Supervisor } from './supervisor';
 import { EmbedSupervisor } from './embedSupervisor';
 import { modelsDir } from './paths';
-import { checkFit, totalRamBytes } from './memory';
-import { scanForeign, killPids } from './processes';
+import { checkFit, totalRamBytes, availableAfterManagedStop } from './memory';
+import { scanForeign, killPids, rssForPid } from './processes';
 import { downloadFile } from './download';
 import { binaryInstalled, installBinary } from './binary';
 
@@ -103,9 +103,18 @@ export function createApi(deps: ApiDeps): Server {
           if (!m) return send(res, 404, { error: 'unknown model' });
           if (m.embedding) return send(res, 400, { error: 'embedding models cannot be used for chat' });
           if (!binaryInstalled() || !modelDownloaded(m)) return send(res, 428, { error: 'binary or model not downloaded' });
-          if (embedActive(deps.embed.state)) await deps.embed.stop(); // one-model policy: unload embed first
-          if (chatActive(deps.supervisor.state)) await deps.supervisor.stop(); // replace any loaded chat model
-          const available = await deps.availableBytes();
+          let reclaimed = 0;
+          if (embedActive(deps.embed.state)) {
+            const pid = deps.embed.managedPid();
+            if (pid) reclaimed += await rssForPid(pid);
+            await deps.embed.stop();
+          }
+          if (chatActive(deps.supervisor.state)) {
+            const pid = deps.supervisor.managedPid();
+            if (pid) reclaimed += await rssForPid(pid);
+            await deps.supervisor.stop();
+          }
+          const available = await availableAfterManagedStop(deps.availableBytes, reclaimed);
           const fit = checkFit(m.memoryBytes, available, totalRamBytes());
           if (!fit.fits) {
             const foreign = await scanForeign([deps.supervisor.managedPid() ?? -1, process.pid]);

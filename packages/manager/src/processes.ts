@@ -36,3 +36,14 @@ export function killPids(pids: number[]): { killed: number[]; failed: number[] }
   }
   return { killed, failed };
 }
+
+/** Read resident set size for a process (bytes), or 0 if the process is gone. */
+export async function rssForPid(pid: number): Promise<number> {
+  try {
+    const { stdout } = await execFileP('ps', ['-o', 'rss=', '-p', String(pid)]);
+    const kb = Number(stdout.trim());
+    return Number.isFinite(kb) && kb > 0 ? kb * 1024 : 0;
+  } catch {
+    return 0;
+  }
+}

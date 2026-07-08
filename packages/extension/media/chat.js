@@ -1025,13 +1025,14 @@ function renderRejection(r, modelId) {
   }
   window.__pendingModelId = modelId;
   window.__pendingKillPids = (r.foreign || []).map((p) => p.pid);
-  const msg = r.wouldFitAfterForeignKill
+  const hasForeign = r.foreign.length > 0;
+  const msg = hasForeign
     ? `Not enough memory (~${need} GB needed, ${have} GB free). Another llama-server is using RAM.`
     : `Not enough memory (~${need} GB needed, ${have} GB free). Try a smaller model.`;
-  $('banner-text').innerHTML = `${esc(msg)}${r.foreign.length ? `<ul style="margin:8px 0 0;padding-left:18px">${rows}</ul>` : ''}`;
+  $('banner-text').innerHTML = `${esc(msg)}${hasForeign ? `<ul style="margin:8px 0 0;padding-left:18px">${rows}</ul>` : ''}`;
   const retry = $('banner-retry');
   if (retry) {
-    retry.hidden = !r.wouldFitAfterForeignKill;
+    retry.hidden = !hasForeign;
     retry.disabled = false;
     retry.textContent = 'Stop other models and retry';
     retry.onclick = () => {
