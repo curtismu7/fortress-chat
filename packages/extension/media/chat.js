@@ -1054,10 +1054,143 @@ function renderChatPicker(metas, activeId) {
   p.value = keep;
 }
 
+let chatMenuTargetId = null;
+let chatMenuMode = 'main';
+
+/** Close the chat history ⋯ context menu. */
+function closeChatMenu() {
+  const menu = $('chat-actions-menu');
+  if (menu) menu.hidden = true;
+  chatMenuTargetId = null;
+  chatMenuMode = 'main';
+}
+
+/** Render the chat ⋯ menu for the current mode (main / rename / delete). */
+function renderChatActionsMenu(title) {
+  const menu = $('chat-actions-menu');
+  if (!menu) return;
+  menu.innerHTML = '';
+  if (chatMenuMode === 'main') {
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.className = 'chat-action-item';
+    rename.dataset.action = 'rename';
+    rename.textContent = 'Rename';
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'chat-action-item chat-action-danger';
+    del.dataset.action = 'delete';
+    del.textContent = 'Delete';
+    menu.append(rename, del);
+    return;
+  }
+  if (chatMenuMode === 'rename') {
+    const label = document.createElement('span');
+    label.className = 'chat-action-label';
+    label.textContent = 'Rename chat';
+    const input = document.createElement('input');
+    input.id = 'chat-rename-input';
+    input.className = 'chat-action-input';
+    input.type = 'text';
+    input.value = title;
+    const row = document.createElement('div');
+    row.className = 'chat-action-row';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'chat-action-item';
+    cancel.dataset.action = 'rename-cancel';
+    cancel.textContent = 'Cancel';
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'chat-action-item chat-action-primary';
+    save.dataset.action = 'rename-save';
+    save.textContent = 'Save';
+    row.append(cancel, save);
+    menu.append(label, input, row);
+    setTimeout(() => { input.focus(); input.select(); }, 0);
+    return;
+  }
+  const label = document.createElement('p');
+  label.className = 'chat-action-label';
+  label.textContent = `Delete "${title}"?`;
+  const row = document.createElement('div');
+  row.className = 'chat-action-row';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'chat-action-item';
+  cancel.dataset.action = 'delete-cancel';
+  cancel.textContent = 'Cancel';
+  const confirm = document.createElement('button');
+  confirm.type = 'button';
+  confirm.className = 'chat-action-item chat-action-danger';
+  confirm.dataset.action = 'delete-confirm';
+  confirm.textContent = 'Delete';
+  row.append(cancel, confirm);
+  menu.append(label, row);
+}
+
+/** Open the chat ⋯ menu anchored to the clicked history row button. */
+function openChatMenu(anchor, id) {
+  const menu = $('chat-actions-menu');
+  if (!menu || !anchor) return;
+  chatMenuTargetId = id;
+  chatMenuMode = 'main';
+  const metas = (window.__lastChats && window.__lastChats.metas) || [];
+  const chat = metas.find((c) => c.id === id);
+  const title = chat?.title || 'New chat';
+  renderChatActionsMenu(title);
+  const rect = anchor.getBoundingClientRect();
+  const estHeight = chatMenuMode === 'main' ? 80 : 120;
+  let top = rect.bottom + 4;
+  if (top + estHeight > window.innerHeight - 8) top = rect.top - estHeight - 4;
+  menu.style.top = `${Math.max(8, top)}px`;
+  menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 180))}px`;
+  menu.hidden = false;
+}
+
+/** Handle clicks inside the chat ⋯ menu. */
+function handleChatMenuAction(action) {
+  const id = chatMenuTargetId;
+  if (!id) return;
+  const metas = (window.__lastChats && window.__lastChats.metas) || [];
+  const chat = metas.find((c) => c.id === id);
+  const title = chat?.title || 'New chat';
+  if (action === 'rename') {
+    chatMenuMode = 'rename';
+    renderChatActionsMenu(title);
+    return;
+  }
+  if (action === 'rename-cancel') {
+    closeChatMenu();
+    return;
+  }
+  if (action === 'rename-save') {
+    const input = $('chat-rename-input');
+    const next = input ? input.value.trim() : '';
+    if (next && next !== title) vscode.postMessage({ type: 'renameChat', id, title: next });
+    closeChatMenu();
+    return;
+  }
+  if (action === 'delete') {
+    chatMenuMode = 'delete';
+    renderChatActionsMenu(title);
+    return;
+  }
+  if (action === 'delete-cancel') {
+    closeChatMenu();
+    return;
+  }
+  if (action === 'delete-confirm') {
+    vscode.postMessage({ type: 'deleteChat', id });
+    closeChatMenu();
+  }
+}
+
 // Render the left-rail chat list. metas may be a search-filtered subset; activeId is the real active chat.
 function renderSidebar(metas, activeId) {
   const list = $('chat-list');
   if (!list) return;
+  closeChatMenu();
   const items = metas || [];
   if (!items.length) {
     list.innerHTML = '<div class="chat-list-empty">No chats</div>';
@@ -1313,6 +1446,27 @@ document.addEventListener('click', (e) => {
   if (e.target.closest('#action-menu') || e.target.closest('#action-btn')) return;
   closeActionMenu();
 });
+document.addEventListener('click', (e) => {
+  const menu = $('chat-actions-menu');
+  if (!menu || menu.hidden) return;
+  const item = e.target.closest('[data-action]');
+  if (item && menu.contains(item)) {
+    e.stopPropagation();
+    handleChatMenuAction(item.dataset.action);
+    return;
+  }
+  if (e.target.closest('#chat-actions-menu') || e.target.closest('.chat-item-menu')) return;
+  closeChatMenu();
+});
+document.addEventListener('keydown', (e) => {
+  const menu = $('chat-actions-menu');
+  if (!menu || menu.hidden) return;
+  if (e.key === 'Escape') { closeChatMenu(); return; }
+  if (chatMenuMode === 'rename' && e.key === 'Enter' && document.activeElement?.id === 'chat-rename-input') {
+    e.preventDefault();
+    handleChatMenuAction('rename-save');
+  }
+});
 { const _ok = $('or-key-save'); if (_ok) _ok.onclick = () => { const k = $('or-key-input').value.trim(); if (k) vscode.postMessage({ type: 'setOpenRouterKey', key: k }); }; }
 { const _gk = $('google-key-save'); if (_gk) _gk.onclick = () => {
   const k = $('google-key-input').value.trim();
@@ -1364,16 +1518,7 @@ $('chat-picker').onchange = (e) => { turnReasoning = ''; vscode.postMessage({ ty
     e.stopPropagation();
     const id = menuBtn.getAttribute('data-id');
     if (!id) return;
-    const metas = (window.__lastChats && window.__lastChats.metas) || [];
-    const chat = metas.find((c) => c.id === id);
-    const title = chat?.title || 'New chat';
-    const next = window.prompt('Rename chat (or type DELETE to remove):', title);
-    if (next == null) return;
-    if (next.trim().toUpperCase() === 'DELETE') {
-      if (window.confirm(`Delete "${title}"?`)) vscode.postMessage({ type: 'deleteChat', id });
-      return;
-    }
-    if (next.trim() && next.trim() !== title) vscode.postMessage({ type: 'renameChat', id, title: next.trim() });
+    openChatMenu(menuBtn, id);
     return;
   }
   const item = e.target.closest('.chat-item'); if (!item) return;
