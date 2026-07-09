@@ -1,0 +1,10 @@
+.git
+.github
+.vscode
+.cursorrules
+node_modules
+packages
+docs
+fixtures
+*.md
+!public/**
