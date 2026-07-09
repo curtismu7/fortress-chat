@@ -25,7 +25,7 @@
         "fortressChat.mcpServers": {
           "type": "array",
           "default": [],
-          "description": "MCP stdio servers for agent mode. Tools are available when Agent mode is on.",
+          "description": "Additional stdio MCP servers for agent mode. The PingOne MCP server is enabled by default (see fortressChat.pingOneMcp). Disable built-ins with {\"name\":\"pingone\",\"disabled\":true}.",
           "items": {
             "type": "object",
             "properties": {
@@ -50,12 +50,46 @@
                   "type": "string"
                 },
                 "description": "Extra environment variables for the server process"
+              },
+              "disabled": {
+                "type": "boolean",
+                "description": "When true, removes a built-in or custom server with this name"
               }
             },
             "required": [
               "name",
               "command"
             ]
+          }
+        },
+        "fortressChat.pingOneMcp": {
+          "type": "object",
+          "default": {
+            "enabled": true,
+            "rootDomain": "pingone.com"
+          },
+          "description": "PingOne MCP server (hosted APIs on PingOne; runs pingone-mcp-server locally). Install: brew install pingidentity/tap/pingone-mcp-server",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include the built-in PingOne MCP server"
+            },
+            "environmentId": {
+              "type": "string",
+              "default": "",
+              "description": "PingOne environment ID (PINGONE_MCP_ENVIRONMENT_ID)"
+            },
+            "clientId": {
+              "type": "string",
+              "default": "",
+              "description": "PingOne worker application client ID (PINGONE_AUTHORIZATION_CODE_CLIENT_ID)"
+            },
+            "rootDomain": {
+              "type": "string",
+              "default": "pingone.com",
+              "description": "PingOne API root domain (pingone.com, pingone.eu, pingone.ca, …)"
+            }
           }
         },
         "fortressChat.skillDirectories": {
