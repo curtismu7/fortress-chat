@@ -642,13 +642,13 @@ function renderModels(status) {
     const sel = m.id === selectedId;
     const agent = m.agentCapable ? ' · Agent' : '';
     const needsKey = m.provider === 'google' && !window.__googleKeySet;
-    return `<button type="button" class="model-row${sel ? ' sel' : ''}${needsKey ? ' needs-key' : ''}" data-id="${esc(m.id)}">
+    return `<div role="button" tabindex="0" class="model-row${sel ? ' sel' : ''}${needsKey ? ' needs-key' : ''}" data-id="${esc(m.id)}">
       <span class="model-row-main">
         <span class="model-row-name">${esc(m.displayName)}</span>
         <span class="model-row-sub">${esc(meta.sub)}${agent}</span>
       </span>
       ${sel ? '<span class="model-row-check">✓</span>' : (meta.deletable ? `<button type="button" class="model-row-delete" data-id="${esc(m.id)}" title="Delete model from disk">Delete</button>` : (meta.action ? `<span class="model-row-action">${esc(meta.action)}</span>` : ''))}
-    </button>`;
+    </div>`;
   };
   const hiddenOpen = window.__hiddenModelsOpen !== false;
   const googleCloud = cloud.filter((m) => m.provider === 'google');
@@ -660,7 +660,7 @@ function renderModels(status) {
   const hiddenGroup = box.querySelector('.model-hidden-group');
   if (hiddenGroup) hiddenGroup.addEventListener('toggle', () => { window.__hiddenModelsOpen = hiddenGroup.open; });
   box.querySelectorAll('.model-row').forEach((el) => {
-    el.onclick = () => {
+    const activate = () => {
       const m = all.find((x) => x.id === el.dataset.id);
       if (!m) return;
       if (m.provider === 'google' && !window.__googleKeySet) {
@@ -677,6 +677,13 @@ function renderModels(status) {
       selectedId = m.id;
       if (window.__status) renderState(window.__status);
       vscode.postMessage({ type: 'selectModel', id: m.id });
+    };
+    el.onclick = activate;
+    el.onkeydown = (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        activate();
+      }
     };
   });
   box.querySelectorAll('.model-row-delete').forEach((btn) => {
@@ -696,11 +703,11 @@ function renderState(status) {
   if (status.downloadError) {
     setup.hidden = false;
     openModelPicker();
-    setup.innerHTML = `<b style="color:#e07a7a">⚠ ${esc(status.downloadError)}</b><p>Tap the model again to retry.</p>`;
+    setup.innerHTML = `<div class="setup-card setup-card--error"><p class="setup-title"><b style="color:#e07a7a">⚠ ${esc(status.downloadError)}</b></p><p class="setup-text">Tap the model again to retry.</p></div>`;
   } else if (!status.binaryInstalled && !(selectedId && allPolicyModels().some((m) => m.id === selectedId && isCloudProvider(m)))) {
     setup.hidden = false;
     const gb = Math.round(status.ram.totalBytes / 2 ** 30);
-    setup.innerHTML = `<b>Welcome to FortressChat</b><p>This Mac has ${gb} GB RAM. Set up the local engine to run models on-device.</p><button type="button" id="do-setup">Set up local engine</button>`;
+    setup.innerHTML = `<div class="setup-card"><p class="setup-title"><b>Welcome to FortressChat</b></p><p class="setup-text">This Mac has ${gb} GB RAM. Set up the local engine to run models on-device.</p><div class="setup-actions"><button type="button" id="do-setup" class="setup-primary">Set up local engine</button></div></div>`;
     const btn = $('do-setup');
     if (btn) btn.onclick = () => vscode.postMessage({ type: 'installBinary' });
     if (!selectedId && !window.__pickerShown) { window.__pickerShown = true; openModelPicker(); }
@@ -709,7 +716,7 @@ function renderState(status) {
     openModelPicker();
     const pct = Math.round((status.download.receivedBytes / status.download.totalBytes) * 100);
     const name = status.download.modelId === '__binary__' ? 'engine' : (allPolicyModels().find((m) => m.local?.catalogId === status.download.modelId)?.displayName || 'model');
-    setup.innerHTML = `<p>Downloading ${esc(name)}… ${pct}%</p><progress max="100" value="${pct}"></progress><button type="button" id="cancel-download" class="setup-action">Cancel download</button>`;
+    setup.innerHTML = `<div class="setup-card"><p class="setup-text">Downloading ${esc(name)}… ${pct}%</p><progress max="100" value="${pct}"></progress><div class="setup-actions"><button type="button" id="cancel-download" class="setup-action">Cancel download</button></div></div>`;
     const cancelBtn = $('cancel-download');
     if (cancelBtn) cancelBtn.onclick = () => vscode.postMessage({ type: 'cancelDownload' });
   } else {
