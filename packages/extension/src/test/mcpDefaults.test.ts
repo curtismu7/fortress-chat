@@ -44,6 +44,24 @@ describe('mcpDefaults', () => {
     expect(servers.map((s) => s.name)).toEqual(['pingone', 'docs']);
   });
 
+  it('accepts remote MCP server config and sanitizes headers', () => {
+    const servers = resolveMcpConfigs([
+      {
+        name: 'remote',
+        transport: 'sse',
+        url: 'https://mcp.example.com/sse',
+        messageUrl: '/messages',
+        headers: { Authorization: 'Bearer test', bad: 123 },
+      },
+    ], {});
+
+    const remote = servers.find((s) => s.name === 'remote');
+    expect(remote?.transport).toBe('sse');
+    expect(remote?.url).toBe('https://mcp.example.com/sse');
+    expect(remote?.messageUrl).toBe('/messages');
+    expect(remote?.headers).toEqual({ Authorization: 'Bearer test' });
+  });
+
   it('user config overrides built-in by name', () => {
     const servers = resolveMcpConfigs([
       { name: 'pingone', command: '/custom/pingone-mcp-server', args: ['run'] },

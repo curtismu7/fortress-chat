@@ -156,6 +156,8 @@ let runMode = 'manual';
 let actionSub = null;
 let actionMenuOpen = false;
 let mcpServers = [];
+let mcpTools = [];
+let mcpToolsFetchedAt = null;
 
 const ACTION_MODES = [
   { id: 'agent', label: 'Agent', icon: '⚡' },
@@ -874,6 +876,11 @@ window.addEventListener('message', (e) => {
     updateModeBar();
   }
   if (m.type === 'mcpStatus') { mcpServers = m.servers || []; renderMcpList(); if (actionMenuOpen && actionSub === 'mcp') renderActionMenu(); }
+  if (m.type === 'mcpTools') {
+    mcpTools = m.tools || [];
+    mcpToolsFetchedAt = Date.now();
+    renderMcpToolsList();
+  }
   if (m.type === 'openActionSub') openActionMenu(m.sub);
   if (m.type === 'projectRules') {
     const el = $('rules-path');
@@ -1329,6 +1336,89 @@ function renderMcpList() {
   }).join('');
 }
 
+function toolSchemaSummary(schema) {
+  if (!schema || typeof schema !== 'object') return 'schema: unknown';
+  const props = (schema.properties && typeof schema.properties === 'object') ? Object.keys(schema.properties) : [];
+  const req = Array.isArray(schema.required) ? schema.required.length : 0;
+  const type = typeof schema.type === 'string' ? schema.type : 'object';
+  return `${type} · ${props.length} input${props.length === 1 ? '' : 's'} · ${req} required`;
+}
+
+function exampleForSchema(schema, propName) {
+  const p = schema && schema.properties && typeof schema.properties === 'object' ? schema.properties[propName] : null;
+  const t = p && typeof p.type === 'string' ? p.type : '';
+  if (t === 'number' || t === 'integer') return 0;
+  if (t === 'boolean') return false;
+  if (t === 'array') return [];
+  if (t === 'object') return {};
+  return '';
+}
+
+function argsTemplate(schema) {
+  if (!schema || typeof schema !== 'object' || !schema.properties || typeof schema.properties !== 'object') return {};
+  const out = {};
+  Object.keys(schema.properties).forEach((k) => { out[k] = exampleForSchema(schema, k); });
+  return out;
+}
+
+function mcpUpdatedLabel() {
+  if (!mcpToolsFetchedAt) return 'not fetched yet';
+  try {
+    return `updated ${new Date(mcpToolsFetchedAt).toLocaleTimeString()}`;
+  } catch {
+    return 'updated recently';
+  }
+}
+
+function renderMcpToolsList() {
+  const box = $('mcp-tools-list'); if (!box) return;
+  const countEl = $('mcp-tools-count');
+  const q = (($('mcp-tools-search') && $('mcp-tools-search').value) || '').trim().toLowerCase();
+
+  const tools = (mcpTools || []).filter((t) => {
+    if (!q) return true;
+    const hay = `${t.name || ''}\n${t.server || ''}\n${t.description || ''}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (countEl) {
+    const total = (mcpTools || []).length;
+    countEl.textContent = q
+      ? `${tools.length} of ${total} MCP tool${total === 1 ? '' : 's'} · ${mcpUpdatedLabel()}`
+      : `${total} MCP tool${total === 1 ? '' : 's'} loaded · ${mcpUpdatedLabel()}`;
+  }
+
+  if (!tools.length) {
+    box.innerHTML = '<p class="settings-hint">No matching MCP tools. Try another search or click "Fetch tool list".</p>';
+    return;
+  }
+
+  const byServer = new Map();
+  tools.forEach((t) => {
+    const key = t.server || 'unknown';
+    const arr = byServer.get(key) || [];
+    arr.push(t);
+    byServer.set(key, arr);
+  });
+
+  const blocks = [];
+  Array.from(byServer.entries()).sort((a, b) => a[0].localeCompare(b[0])).forEach(([server, list]) => {
+    const items = list
+      .slice()
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+      .map((t) => {
+        const shortName = String(t.name || '').replace(`${server}__`, '');
+        const schemaPretty = esc(JSON.stringify(t.inputSchema || {}, null, 2));
+        const argsJson = esc(JSON.stringify(argsTemplate(t.inputSchema), null, 2));
+        const desc = t.description ? `<div class="mcp-tool-desc">${esc(t.description)}</div>` : '';
+        return `<details class="mcp-tool-item"><summary><span class="mcp-tool-name">${esc(shortName || t.name || '(unnamed)')}</span><span class="mcp-tool-meta">${esc(toolSchemaSummary(t.inputSchema))}</span></summary>${desc}<div class="mcp-tool-actions"><button type="button" class="mcp-tool-btn" data-mcp-action="use" data-tool-name="${esc(t.name)}">Use tool</button><button type="button" class="mcp-tool-btn" data-mcp-action="copy" data-tool-name="${esc(t.name)}">Copy args JSON</button></div><pre class="mcp-tool-schema">${schemaPretty}</pre><pre class="mcp-tool-schema">${argsJson}</pre></details>`;
+      }).join('');
+    blocks.push(`<section class="mcp-tool-group"><div class="mcp-tool-group-head"><span class="mcp-tool-server">${esc(server)}</span><span class="settings-hint">${list.length} tool${list.length === 1 ? '' : 's'}</span></div>${items}</section>`);
+  });
+
+  box.innerHTML = blocks.join('');
+}
+
 function renderPersonas() {
   const box = $('personas-list'); if (!box) return;
   const list = window.__personas || [];
@@ -1605,6 +1695,34 @@ $('banner-close').onclick = () => { $('banner').hidden = true; };
 { const _sp = $('skill-picker'); if (_sp) _sp.onchange = () => vscode.postMessage({ type: 'setSkill', id: _sp.value || null }); }
 { const _sr = $('skills-reload'); if (_sr) _sr.onclick = () => vscode.postMessage({ type: 'reloadSkills' }); }
 { const _ss = $('skills-settings'); if (_ss) _ss.onclick = () => vscode.postMessage({ type: 'openSkillSettings' }); }
+{ const _mt = $('mcp-tools-fetch'); if (_mt) _mt.onclick = () => vscode.postMessage({ type: 'fetchMcpTools' }); }
+{ const _mts = $('mcp-tools-search'); if (_mts) _mts.oninput = () => renderMcpToolsList(); }
+{
+  const _mtl = $('mcp-tools-list');
+  if (_mtl) _mtl.onclick = (e) => {
+    const btn = e.target.closest && e.target.closest('[data-mcp-action]');
+    if (!btn) return;
+    const action = btn.getAttribute('data-mcp-action');
+    const toolName = btn.getAttribute('data-tool-name') || '';
+    if (!toolName) return;
+    const tool = (mcpTools || []).find((t) => String(t.name || '') === toolName);
+    const args = JSON.stringify(argsTemplate(tool && tool.inputSchema), null, 2);
+    if (action === 'use') {
+      const input = $('input');
+      if (!input) return;
+      const text = `Use MCP tool ${toolName} with arguments:\n${args}`;
+      input.value = input.value ? `${input.value}\n\n${text}` : text;
+      resizeInput();
+      updateMeter();
+      input.focus();
+      closeSettings(false);
+      return;
+    }
+    if (action === 'copy') {
+      vscode.postMessage({ type: 'copyText', text: args });
+    }
+  };
+}
 { const _mr = $('mcp-reload'); if (_mr) _mr.onclick = () => vscode.postMessage({ type: 'reloadMcp' }); }
 { const _ms = $('mcp-settings'); if (_ms) _ms.onclick = () => vscode.postMessage({ type: 'openMcpSettings' }); }
 { const _psv = $('persona-save'); if (_psv) _psv.onclick = () => {

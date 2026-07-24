@@ -322,6 +322,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.postMcpStatusTarget();
   }
 
+  private postMcpTools(): void {
+    this.postMcpToolsTarget();
+  }
+
   private postMcpStatusTarget(emit?: (msg: unknown) => void): void {
     const msg = {
       type: 'mcpStatus',
@@ -333,6 +337,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         builtin: c.isBuiltin(),
       })),
     };
+    if (emit) emit(msg);
+    else this.post(msg);
+  }
+
+  private postMcpToolsTarget(emit?: (msg: unknown) => void): void {
+    const tools = this.mcpClients.flatMap((c) => c.listTools().map((t) => ({
+      server: c.serverName(),
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema,
+    })));
+    const msg = { type: 'mcpTools', tools };
     if (emit) emit(msg);
     else this.post(msg);
   }
@@ -363,7 +379,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return 'saved to local memory';
       },
       mcpCall: async (name: string, args: Record<string, unknown>) => {
-        for (const c of this.mcpClients) {
+        const split = name.indexOf('__');
+        const server = split > 0 ? name.slice(0, split) : '';
+        const candidates = server
+          ? this.mcpClients.filter((c) => c.serverName() === server)
+          : this.mcpClients;
+        if (candidates.length === 0) return 'mcp tool not found';
+        for (const c of candidates) {
           try { return await c.callTool(name, args); } catch { continue; }
         }
         return 'mcp tool not found';
@@ -391,6 +413,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       } catch { /* error stored on client */ }
     }
     this.postMcpStatus();
+    this.postMcpTools();
   }
 
   private async init(): Promise<void> {
@@ -443,6 +466,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     emit({ type: 'docsStatus', stats: this.docsService().stats() });
     this.postModelsDirectoryTarget(emit);
     this.postMcpStatusTarget(emit);
+    this.postMcpToolsTarget(emit);
     emit({ type: 'openRouterKeySet', set: !!(await getOpenRouterKey(this.context.secrets)) });
     {
       const googleKeySaved = !!(await getGoogleKey(this.context.secrets));
@@ -816,6 +840,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'reloadMcp':
           await this.initMcp();
           return;
+        case 'fetchMcpTools':
+          await this.initMcp();
+          return;
+        case 'copyText': {
+          const text = String(m.text ?? '');
+          if (!text.trim()) return;
+          await vscode.env.clipboard.writeText(text);
+          this.post({ type: 'hint', message: 'Copied MCP args JSON to clipboard.' });
+          return;
+        }
         case 'reloadSkills':
           this.refreshSkills();
           return;
