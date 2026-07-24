@@ -1,0 +1,59 @@
+name: desktop-release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  desktop-dmg:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build workspaces
+        run: npm run build
+
+      - name: Configure code signing certificate (optional)
+        if: ${{ secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_CERT_PASSWORD != '' }}
+        shell: bash
+        run: |
+          CERT_PATH="$RUNNER_TEMP/macos-signing-cert.p12"
+          echo "${{ secrets.MACOS_CERT_P12_BASE64 }}" | base64 --decode > "$CERT_PATH"
+          echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
+          echo "CSC_KEY_PASSWORD=${{ secrets.MACOS_CERT_PASSWORD }}" >> "$GITHUB_ENV"
+
+      - name: Build desktop DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run desktop:dist
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fortresschat-desktop-dmg
+          path: |
+            packages/desktop/dist/*.dmg
+            packages/desktop/dist/*.blockmap
+
+      - name: Publish GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            packages/desktop/dist/*.dmg
+            packages/desktop/dist/*.blockmap

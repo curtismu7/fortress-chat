@@ -46,6 +46,11 @@ Standalone sign-in policy:
 - Google login is required.
 - Only `@pingidentity.com` Google accounts are allowed.
 
+Optional macOS signing + notarization env vars:
+- `APPLE_ID`
+- `APPLE_APP_SPECIFIC_PASSWORD`
+- `APPLE_TEAM_ID`
+
 Build app artifacts:
 
 ```bash
@@ -54,6 +59,10 @@ npm run desktop:dist  # creates a DMG in packages/desktop/dist
 ```
 
 Note: this is a standalone preview shell. VS Code-specific integrations are not fully wired yet.
+
+Release prep docs:
+- `docs/releases/2026-07-24-v0.1.15.md`
+- `docs/releases/RELEASE-CHECKLIST.md`
 
 **Full harness guide:** [`docs/DEV-HARNESS.md`](docs/DEV-HARNESS.md) — launch configs, hot reload, fixture sandbox, E2E, troubleshooting.
 
