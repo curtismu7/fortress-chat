@@ -47,6 +47,22 @@ const AUTO_APPROVE_KEY = 'fortressChat.autoApprove';
 
 type ChatMode = 'ask' | 'agent' | 'plan' | 'debug' | 'multitask';
 
+function bytesToGiB(bytes: number): string {
+  return `${(bytes / 2 ** 30).toFixed(1)} GB`;
+}
+
+function formatInsufficientMemoryError(requiredBytes: number, availableBytes: number, totalBytes?: number): string {
+  const required = bytesToGiB(requiredBytes);
+  const available = bytesToGiB(availableBytes);
+  const shortfall = bytesToGiB(Math.max(0, requiredBytes - availableBytes));
+  if (!totalBytes || totalBytes <= 0) {
+    return `Unable to start model: required ${required}, available ${available} (short by ${shortfall}). FortressChat also keeps a 15% RAM safety reserve.`;
+  }
+  const reserveBytes = 0.15 * totalBytes;
+  const minimumFree = requiredBytes + reserveBytes;
+  return `Unable to start model: required ${required} + reserve ${bytesToGiB(reserveBytes)} (minimum free ${bytesToGiB(minimumFree)}), available ${available}.`;
+}
+
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | null = null;
   private webviews = new Set<vscode.Webview>();
@@ -1498,7 +1514,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           if (!started.ok) {
             this.selected = null;
             if (started.rejection.reason === 'insufficient-memory') {
-              throw new Error('Unable to start the selected local model due to insufficient memory.');
+              const totalBytes = pre?.ram?.totalBytes;
+              throw new Error(formatInsufficientMemoryError(started.rejection.requiredBytes, started.rejection.availableBytes, totalBytes));
             }
             throw new Error('Unable to start the selected local model.');
           }

@@ -1,6 +1,8 @@
 const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const http = require('node:http');
+const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { spawn } = require('node:child_process');
 const { homedir } = require('node:os');
@@ -9,8 +11,13 @@ const state = {
   messages: [],
   chats: [{ id: 'standalone', title: 'Standalone Chat', preview: '', updatedAt: Date.now(), folder: '', agentMode: false }],
   mcpServers: [],
+  mcpTools: [],
+  activeMcpServerName: '',
+  activeMcpSearchToolName: '',
   modelsDirectoryPath: '',
   themeMode: 'dark',
+  chatMode: 'ask',
+  runMode: 'manual',
   selectedModelId: null,
   localCatalog: [],
 };
@@ -24,6 +31,14 @@ const AUTH_SCOPE = 'openid email profile';
 const AUTH_TIMEOUT_MS = 10 * 60 * 1000;
 const DEVICE_CODE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code';
 const STANDALONE_SETTINGS_FILE = 'standalone-settings.json';
+const MCP_OAUTH_TIMEOUT_MS = 180000;
+const MCP_OAUTH_CALLBACK_PORT = Number.parseInt(String(process.env.FORTRESS_MCP_OAUTH_CALLBACK_PORT || '8759'), 10) || 8759;
+const MAX_MCP_SERVERS = 10;
+const DEFAULT_MCPPLAYGROUND_SERVER = {
+  name: 'mcp-playground-online',
+  transport: 'http',
+  url: 'https://mcpplaygroundonline.com/mcp-app-server',
+};
 const LOCAL_ORG = {
   gemma3: 'Google',
   'gpt-oss': 'OpenAI',
@@ -242,6 +257,16 @@ function normalizeStandaloneMcpServerRow(row) {
     ? Object.fromEntries(Object.entries(row.headers).filter(([, v]) => typeof v === 'string'))
     : undefined;
   const messageUrl = typeof row.messageUrl === 'string' ? row.messageUrl.trim() : undefined;
+  const oauth = row.oauth && typeof row.oauth === 'object' && !Array.isArray(row.oauth)
+    ? {
+      authorizeUrl: typeof row.oauth.authorizeUrl === 'string' ? row.oauth.authorizeUrl.trim() : undefined,
+      tokenUrl: typeof row.oauth.tokenUrl === 'string' ? row.oauth.tokenUrl.trim() : undefined,
+      clientId: typeof row.oauth.clientId === 'string' ? row.oauth.clientId.trim() : undefined,
+      scope: typeof row.oauth.scope === 'string' ? row.oauth.scope.trim() : undefined,
+      audience: typeof row.oauth.audience === 'string' ? row.oauth.audience.trim() : undefined,
+    }
+    : undefined;
+  const hasOauth = oauth && Object.values(oauth).some((v) => !!v);
 
   return {
     name,
@@ -252,7 +277,107 @@ function normalizeStandaloneMcpServerRow(row) {
     url: url || undefined,
     headers: headers && Object.keys(headers).length ? headers : undefined,
     messageUrl: messageUrl || undefined,
+    oauth: hasOauth ? oauth : undefined,
     builtin: row.builtin === true,
+  };
+}
+
+function bytesToGiB(bytes) {
+  return `${(Number(bytes || 0) / 2 ** 30).toFixed(1)} GB`;
+}
+
+function formatInsufficientMemoryError(rejection, totalBytes) {
+  const requiredBytes = Number(rejection?.requiredBytes || 0);
+  const availableBytes = Number(rejection?.availableBytes || 0);
+  const shortfallBytes = Math.max(0, requiredBytes - availableBytes);
+  if (!totalBytes || totalBytes <= 0) {
+    return `Unable to start model: required ${bytesToGiB(requiredBytes)}, available ${bytesToGiB(availableBytes)} (short by ${bytesToGiB(shortfallBytes)}). FortressChat also keeps a 15% RAM safety reserve.`;
+  }
+  const reserveBytes = 0.15 * totalBytes;
+  const minimumFreeBytes = requiredBytes + reserveBytes;
+  return `Unable to start model: required ${bytesToGiB(requiredBytes)} + reserve ${bytesToGiB(reserveBytes)} (minimum free ${bytesToGiB(minimumFreeBytes)}), available ${bytesToGiB(availableBytes)}.`;
+}
+
+function randomBase64Url(bytes = 32) {
+  return crypto.randomBytes(bytes).toString('base64url');
+}
+
+function sha256Base64Url(value) {
+  return crypto.createHash('sha256').update(value).digest('base64url');
+}
+
+async function createOAuthCallbackListener(stateExpected) {
+  let finish = null;
+  const codePromise = new Promise((resolve, reject) => {
+    finish = { resolve, reject };
+  });
+
+  const server = http.createServer((req, res) => {
+    const done = (err, code) => {
+      try { server.close(); } catch { /* noop */ }
+      if (err) finish.reject(err);
+      else finish.resolve(code);
+    };
+
+    try {
+      const reqUrl = new URL(req.url || '/', 'http://127.0.0.1');
+      const code = String(reqUrl.searchParams.get('code') || '').trim();
+      const state = String(reqUrl.searchParams.get('state') || '').trim();
+      const error = String(reqUrl.searchParams.get('error') || '').trim();
+      const errorDescription = String(reqUrl.searchParams.get('error_description') || '').trim();
+
+      if (error) {
+        res.statusCode = 400;
+        res.setHeader('content-type', 'text/plain; charset=utf-8');
+        res.end('Sign-in failed. You can close this tab and return to FortressChat.');
+        done(new Error(errorDescription || error));
+        return;
+      }
+      if (!code) {
+        res.statusCode = 400;
+        res.setHeader('content-type', 'text/plain; charset=utf-8');
+        res.end('Missing authorization code. You can close this tab and return to FortressChat.');
+        done(new Error('Missing authorization code in callback.'));
+        return;
+      }
+      if (state !== stateExpected) {
+        res.statusCode = 400;
+        res.setHeader('content-type', 'text/plain; charset=utf-8');
+        res.end('State mismatch. You can close this tab and return to FortressChat.');
+        done(new Error('OAuth state mismatch.'));
+        return;
+      }
+
+      res.statusCode = 200;
+      res.setHeader('content-type', 'text/plain; charset=utf-8');
+      res.end('Sign-in complete. You can close this tab and return to FortressChat.');
+      done(null, code);
+    } catch (err) {
+      done(err instanceof Error ? err : new Error(String(err)));
+    }
+  });
+
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(MCP_OAUTH_CALLBACK_PORT, '127.0.0.1', () => resolve());
+  });
+
+  const addr = server.address();
+  if (!addr || typeof addr !== 'object') {
+    try { server.close(); } catch { /* noop */ }
+    throw new Error('Could not bind OAuth callback listener.');
+  }
+
+  const redirectUri = `http://127.0.0.1:${addr.port}/oauth/callback`;
+  return {
+    redirectUri,
+    waitForCode: () => Promise.race([
+      codePromise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('OAuth sign-in timed out.')), MCP_OAUTH_TIMEOUT_MS)),
+    ]),
+    close: () => {
+      try { server.close(); } catch { /* noop */ }
+    },
   };
 }
 
@@ -306,6 +431,34 @@ function loadStandaloneSettings() {
   if (saved.themeMode === 'light' || saved.themeMode === 'dark') {
     state.themeMode = saved.themeMode;
   }
+}
+
+function ensureStandaloneMcpDefaults() {
+  const current = Array.isArray(state.mcpServers) ? state.mcpServers : [];
+  const hasDefaultByName = current.some((row) => String(row?.name || '').trim() === DEFAULT_MCPPLAYGROUND_SERVER.name);
+  const hasDefaultByUrl = current.some((row) => String(row?.url || '').trim() === DEFAULT_MCPPLAYGROUND_SERVER.url);
+  if (current.length >= MAX_MCP_SERVERS) return;
+  if (hasDefaultByName || hasDefaultByUrl) return;
+  upsertStandaloneMcpServers([DEFAULT_MCPPLAYGROUND_SERVER]);
+}
+
+function normalizeMcpRuntimeError(server, errText) {
+  const raw = String(errText || '').trim();
+  if (!raw) return 'Unknown MCP error.';
+  const lower = raw.toLowerCase();
+  const serverUrl = String(server?.url || '').trim().toLowerCase();
+  const isBrave = String(server?.command || '').trim() === 'npx'
+    && Array.isArray(server?.args)
+    && server.args.includes('@modelcontextprotocol/server-brave-search');
+  if (isBrave && lower.includes('brave_api_key') && lower.includes('required')) {
+    return 'Brave MCP requires BRAVE_API_KEY. Open MCP settings, edit brave-search, and set Env BRAVE_API_KEY to a valid key.';
+  }
+  const isMcpPlaygroundAuthServer = serverUrl.includes('mcpplaygroundonline.com/mcp-auth-server');
+  const authFailure = lower.includes('401') || lower.includes('invalid_token') || lower.includes('no authorization provided');
+  if (isMcpPlaygroundAuthServer && authFailure) {
+    return 'MCP Playground auth server requires valid OAuth sign-in. Open MCP settings for this server and click Connect OAuth (or replace/remove stale Bearer token), then fetch tools again.';
+  }
+  return raw;
 }
 
 function getEnv(name) {
@@ -698,6 +851,35 @@ function post(win, msg) {
   win.webContents.send('fc:message', msg);
 }
 
+function uiMcpConfig(row) {
+  if (!row || typeof row !== 'object') return undefined;
+  const headers = row.headers && typeof row.headers === 'object' && !Array.isArray(row.headers)
+    ? Object.fromEntries(Object.entries(row.headers).filter(([k, v]) => k !== 'Authorization' && typeof v === 'string'))
+    : undefined;
+  const oauth = row.oauth && typeof row.oauth === 'object' && !Array.isArray(row.oauth)
+    ? {
+      authorizeUrl: typeof row.oauth.authorizeUrl === 'string' ? row.oauth.authorizeUrl : undefined,
+      tokenUrl: typeof row.oauth.tokenUrl === 'string' ? row.oauth.tokenUrl : undefined,
+      clientId: typeof row.oauth.clientId === 'string' ? row.oauth.clientId : undefined,
+      scope: typeof row.oauth.scope === 'string' ? row.oauth.scope : undefined,
+      audience: typeof row.oauth.audience === 'string' ? row.oauth.audience : undefined,
+    }
+    : undefined;
+  return {
+    transport: typeof row.transport === 'string' ? row.transport : undefined,
+    command: typeof row.command === 'string' ? row.command : undefined,
+    args: Array.isArray(row.args) ? row.args.filter((a) => typeof a === 'string') : undefined,
+    env: row.env && typeof row.env === 'object' && !Array.isArray(row.env)
+      ? Object.fromEntries(Object.entries(row.env).filter(([, v]) => typeof v === 'string'))
+      : undefined,
+    url: typeof row.url === 'string' ? row.url : undefined,
+    messageUrl: typeof row.messageUrl === 'string' ? row.messageUrl : undefined,
+    headers: headers && Object.keys(headers).length ? headers : undefined,
+    hasAuthorization: !!(row.headers && typeof row.headers === 'object' && typeof row.headers.Authorization === 'string' && row.headers.Authorization.trim()),
+    oauth: oauth && Object.values(oauth).some((v) => !!v) ? oauth : undefined,
+  };
+}
+
 function postMcpState(win) {
   const servers = state.mcpServers.map((s) => ({
     name: s.name,
@@ -705,6 +887,7 @@ function postMcpState(win) {
     tools: 0,
     error: null,
     builtin: !!s.builtin,
+    config: uiMcpConfig(s),
   }));
   post(win, { type: 'mcpStatus', servers });
   post(win, { type: 'mcpTools', tools: [] });
@@ -770,7 +953,13 @@ async function fetchHttpMcpTools(server) {
       body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
     });
     const text = await res.text();
-    if (!res.ok) throw new Error(`MCP HTTP ${res.status}: ${text.slice(0, 200)}`);
+    if (!res.ok) {
+      const body = text.slice(0, 200);
+      if (res.status === 401) {
+        throw new Error('MCP auth failed (401): add a Bearer token or use Connect OAuth for this server.');
+      }
+      throw new Error(`MCP HTTP ${res.status}: ${body}`);
+    }
     const msg = parseRpcMessageFromHttp(text, res.headers.get('content-type') || '');
     if (!msg) throw new Error('MCP HTTP response was not valid JSON-RPC');
     if (msg.error) throw new Error(String(msg.error.message || 'MCP error'));
@@ -811,6 +1000,7 @@ async function fetchHttpMcpTools(server) {
   const listed = await request('tools/list', {});
   return Array.isArray(listed?.tools)
     ? listed.tools.map((t) => ({
+      server: server.name,
       name: `${server.name}__${t.name}`,
       description: t.description || t.name,
       inputSchema: t.inputSchema || { type: 'object', properties: {} },
@@ -818,7 +1008,7 @@ async function fetchHttpMcpTools(server) {
     : [];
 }
 
-async function fetchStdioMcpTools(server) {
+async function fetchStdioMcpTools(server, wireMode = 'framed') {
   return new Promise((resolve, reject) => {
     if (!server.command) {
       reject(new Error('Only stdio MCP servers are supported in standalone right now.'));
@@ -938,13 +1128,15 @@ async function fetchStdioMcpTools(server) {
           resolve: (v) => { clearTimeout(timer); resolveReq(v); },
           reject: (e) => { clearTimeout(timer); rejectReq(e); },
         });
-        proc.stdin.write(framedPayload(payload));
+        if (wireMode === 'newline') proc.stdin.write(`${payload}\n`);
+        else proc.stdin.write(framedPayload(payload));
       });
     };
 
     const notify = (method, params) => {
       const payload = JSON.stringify({ jsonrpc: '2.0', method, params });
-      proc.stdin.write(framedPayload(payload));
+      if (wireMode === 'newline') proc.stdin.write(`${payload}\n`);
+      else proc.stdin.write(framedPayload(payload));
     };
 
     (async () => {
@@ -973,6 +1165,7 @@ async function fetchStdioMcpTools(server) {
         const listed = await request('tools/list', {}, 8000);
         const tools = Array.isArray(listed?.tools)
           ? listed.tools.map((t) => ({
+            server: server.name,
             name: `${server.name}__${t.name}`,
             description: t.description || t.name,
             inputSchema: t.inputSchema || { type: 'object', properties: {} },
@@ -987,10 +1180,106 @@ async function fetchStdioMcpTools(server) {
   });
 }
 
-async function refreshMcpTools(win) {
+async function startMcpOAuth(win, serverName) {
+  const name = String(serverName || '').trim();
+  if (!name) throw new Error('MCP server name is required for OAuth connect.');
+
+  const server = (state.mcpServers || []).find((s) => s && s.name === name);
+  if (!server) throw new Error(`MCP server "${name}" was not found.`);
+
+  const oauth = server.oauth && typeof server.oauth === 'object' ? server.oauth : {};
+  const authorizeUrl = String(oauth.authorizeUrl || '').trim();
+  const tokenUrl = String(oauth.tokenUrl || '').trim();
+  const clientId = String(oauth.clientId || '').trim();
+  const scope = String(oauth.scope || 'openid profile').trim();
+  const audience = String(oauth.audience || '').trim();
+
+  if (!authorizeUrl || !tokenUrl || !clientId) {
+    throw new Error('OAuth config is incomplete. Set authorize URL, token URL, and client ID in MCP settings.');
+  }
+
+  post(win, { type: 'hint', message: `Starting OAuth sign-in for MCP server "${name}"...` });
+
+  const stateParam = randomBase64Url(24);
+  const codeVerifier = randomBase64Url(64);
+  const codeChallenge = sha256Base64Url(codeVerifier);
+
+  let callback;
+  try {
+    callback = await createOAuthCallbackListener(stateParam);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('EADDRINUSE')) {
+      throw new Error(`OAuth callback port ${MCP_OAUTH_CALLBACK_PORT} is in use. Free the port or set FORTRESS_MCP_OAUTH_CALLBACK_PORT.`);
+    }
+    throw err instanceof Error ? err : new Error(msg);
+  }
+  try {
+    const authUrl = new URL(authorizeUrl);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('client_id', clientId);
+    authUrl.searchParams.set('redirect_uri', callback.redirectUri);
+    authUrl.searchParams.set('scope', scope);
+    authUrl.searchParams.set('state', stateParam);
+    authUrl.searchParams.set('code_challenge', codeChallenge);
+    authUrl.searchParams.set('code_challenge_method', 'S256');
+    if (audience) authUrl.searchParams.set('audience', audience);
+
+    await shell.openExternal(authUrl.toString());
+    post(win, { type: 'hint', message: 'Complete sign-in in your browser to connect MCP OAuth.' });
+
+    const code = await callback.waitForCode();
+
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: callback.redirectUri,
+      client_id: clientId,
+      code_verifier: codeVerifier,
+    });
+    if (audience) body.set('audience', audience);
+
+    const tokenRes = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+    const tokenJson = await tokenRes.json().catch(() => ({}));
+    if (!tokenRes.ok) {
+      const detail = String(tokenJson.error_description || tokenJson.error || `Token exchange failed (${tokenRes.status})`);
+      throw new Error(detail);
+    }
+
+    const accessToken = String(tokenJson.access_token || '').trim();
+    if (!accessToken) throw new Error('Token response did not include access_token.');
+
+    upsertStandaloneMcpServers([{
+      ...server,
+      name,
+      headers: {
+        ...(server.headers && typeof server.headers === 'object' ? server.headers : {}),
+        Authorization: `Bearer ${accessToken}`,
+      },
+      oauth: {
+        authorizeUrl,
+        tokenUrl,
+        clientId,
+        scope,
+        audience: audience || undefined,
+      },
+    }]);
+
+    post(win, { type: 'hint', message: `OAuth token saved for MCP server "${name}".` });
+  } finally {
+    callback.close();
+  }
+}
+
+async function refreshMcpTools(win, selectedServerName = '') {
   const rows = Array.isArray(state.mcpServers) ? state.mcpServers : [];
   const statuses = [];
   const allTools = [];
+  const selected = String(selectedServerName || '').trim();
 
   for (const server of rows) {
     if (!server?.name) continue;
@@ -1001,42 +1290,488 @@ async function refreshMcpTools(win) {
         tools: 0,
         error: 'MCP server is missing command or URL.',
         builtin: !!server.builtin,
+        config: uiMcpConfig(server),
       });
       continue;
     }
 
     try {
-      const tools = server.command
-        ? await fetchStdioMcpTools(server)
-        : await fetchHttpMcpTools(server);
+      let tools;
+      if (server.command) {
+        try {
+          tools = await fetchStdioMcpTools(server, 'framed');
+        } catch (e) {
+          const msg = String(e instanceof Error ? e.message : e).toLowerCase();
+          if (!msg.includes('timeout waiting for initialize')) throw e;
+          tools = await fetchStdioMcpTools(server, 'newline');
+        }
+      } else {
+        tools = await fetchHttpMcpTools(server);
+      }
       statuses.push({
         name: server.name,
         connected: true,
         tools: tools.length,
         error: null,
         builtin: !!server.builtin,
+        config: uiMcpConfig(server),
       });
       allTools.push(...tools);
     } catch (e) {
+      const errTextRaw = e instanceof Error ? e.message : String(e);
+      const errText = normalizeMcpRuntimeError(server, errTextRaw);
+      const hasOauth = !!(server.oauth && typeof server.oauth === 'object');
+      if (hasOauth && errText.includes('401')) {
+        try {
+          await startMcpOAuth(win, String(server.name || ''));
+          const tools = server.command
+            ? await fetchStdioMcpTools(server)
+            : await fetchHttpMcpTools(server);
+          statuses.push({
+            name: server.name,
+            connected: true,
+            tools: tools.length,
+            error: null,
+            builtin: !!server.builtin,
+            config: uiMcpConfig(server),
+          });
+          allTools.push(...tools);
+          continue;
+        } catch (oauthErr) {
+          statuses.push({
+            name: server.name,
+            connected: false,
+            tools: 0,
+            error: oauthErr instanceof Error ? oauthErr.message : String(oauthErr),
+            builtin: !!server.builtin,
+            config: uiMcpConfig(server),
+          });
+          continue;
+        }
+      }
       statuses.push({
         name: server.name,
         connected: false,
         tools: 0,
-        error: e instanceof Error ? e.message : String(e),
+        error: errText,
         builtin: !!server.builtin,
+        config: uiMcpConfig(server),
       });
     }
   }
 
+  const tools = selected
+    ? allTools.filter((t) => String(t?.name || '').startsWith(`${selected}__`))
+    : allTools;
+
+  state.mcpTools = tools;
+
   post(win, { type: 'mcpStatus', servers: statuses });
-  post(win, { type: 'mcpTools', tools: allTools });
+  post(win, { type: 'mcpTools', tools });
   if (!rows.length) {
     post(win, { type: 'hint', message: 'No MCP servers configured yet. Import JSON or add a server first.' });
-  } else if (!allTools.length) {
+  } else if (!tools.length) {
     post(win, { type: 'hint', message: 'MCP servers loaded, but no tools were returned. Check server command/args and MCP status errors.' });
   } else {
-    post(win, { type: 'hint', message: `Fetched ${allTools.length} MCP tool${allTools.length === 1 ? '' : 's'}.` });
+    const scope = selected ? ` for ${selected}` : '';
+    post(win, { type: 'hint', message: `Fetched ${tools.length} MCP tool${tools.length === 1 ? '' : 's'}${scope}.` });
   }
+}
+
+function shortMcpToolName(fullName, serverName) {
+  const full = String(fullName || '').trim();
+  const prefix = `${String(serverName || '').trim()}__`;
+  if (prefix !== '__' && full.startsWith(prefix)) return full.slice(prefix.length);
+  return full;
+}
+
+function isSearchIntent(text) {
+  const q = String(text || '').trim();
+  return /^(search|find|look\s+up|web\s+search)\b/i.test(q);
+}
+
+function extractSearchQuery(text) {
+  const q = String(text || '').trim();
+  return q.replace(/^(search|find|look\s+up|web\s+search)\s*/i, '').trim() || q;
+}
+
+function looksLikeSearchTool(tool) {
+  if (!tool || typeof tool !== 'object') return false;
+  const name = String(tool.name || '').toLowerCase();
+  const props = Object.keys(tool.inputSchema?.properties || {}).map((k) => k.toLowerCase());
+  const hasQueryArg = props.includes('q') || props.includes('query') || props.includes('keywords');
+  const searchName = name.includes('search') || name.includes('news') || name.includes('web');
+  return hasQueryArg && searchName;
+}
+
+function toolServerName(tool) {
+  const explicit = String(tool?.server || '').trim();
+  if (explicit) return explicit;
+  const full = String(tool?.name || '');
+  const idx = full.indexOf('__');
+  if (idx > 0) return full.slice(0, idx);
+  return '';
+}
+
+function buildSearchToolArgs(tool, queryText) {
+  const out = {};
+  const schema = tool?.inputSchema && typeof tool.inputSchema === 'object' ? tool.inputSchema : {};
+  const props = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
+  const keys = Object.keys(props).map((k) => k.toLowerCase());
+  if (keys.includes('q')) out.q = queryText;
+  else if (keys.includes('query')) out.query = queryText;
+  else if (keys.includes('keywords')) out.keywords = queryText;
+
+  if (keys.includes('country')) out.country = 'US';
+  if (keys.includes('search_lang')) out.search_lang = 'en';
+  if (keys.includes('freshness')) out.freshness = 'pm';
+  return out;
+}
+
+function extractToolText(result) {
+  if (!result || typeof result !== 'object') return String(result || '');
+  const content = Array.isArray(result.content) ? result.content : [];
+  const parts = content
+    .map((c) => {
+      if (!c || typeof c !== 'object') return '';
+      if (typeof c.text === 'string') return c.text;
+      if (Object.hasOwn(c, 'json')) {
+        try { return JSON.stringify(c.json); } catch { return ''; }
+      }
+      return '';
+    })
+    .filter(Boolean);
+  if (parts.length) return parts.join('\n');
+  if (Object.hasOwn(result, 'structuredContent')) {
+    try { return JSON.stringify(result.structuredContent, null, 2); } catch { return String(result.structuredContent); }
+  }
+  try { return JSON.stringify(result, null, 2); } catch { return String(result); }
+}
+
+function parseRpcMessageFromSseBody(text) {
+  const body = String(text || '');
+  const chunks = body.split(/\r?\n\r?\n/);
+  for (const chunk of chunks) {
+    const dataLines = [];
+    for (const line of chunk.split(/\r?\n/)) {
+      if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+    }
+    if (!dataLines.length) continue;
+    const payload = dataLines.join('\n').trim();
+    if (!payload) continue;
+    try { return JSON.parse(payload); } catch { /* continue */ }
+  }
+  return null;
+}
+
+async function callHttpMcpTool(server, fullToolName, args) {
+  if (!server.url) throw new Error('MCP URL is required for HTTP transport.');
+  let nextId = 1;
+
+  const request = async (method, params) => {
+    const id = nextId++;
+    const res = await fetch(server.url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        ...(server.headers || {}),
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      const body = text.slice(0, 200);
+      if (res.status === 401) throw new Error('MCP auth failed (401).');
+      throw new Error(`MCP HTTP ${res.status}: ${body}`);
+    }
+    const rpc = parseRpcMessageFromHttp(text, res.headers.get('content-type') || '')
+      || parseRpcMessageFromSseBody(text);
+    if (!rpc) throw new Error('MCP HTTP response was not valid JSON-RPC');
+    if (rpc.error) throw new Error(String(rpc.error.message || 'MCP error'));
+    return rpc.result;
+  };
+
+  const notify = async (method, params) => {
+    await fetch(server.url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        ...(server.headers || {}),
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', method, params }),
+    }).catch(() => undefined);
+  };
+
+  const protocolVersions = ['2025-03-26', '2024-11-05', '2024-10-07'];
+  let initialized = false;
+  let initError = null;
+  for (const protocolVersion of protocolVersions) {
+    try {
+      await request('initialize', {
+        protocolVersion,
+        capabilities: {},
+        clientInfo: { name: 'fortress-chat-standalone', version: '0.1.0' },
+      });
+      initialized = true;
+      break;
+    } catch (e) {
+      initError = e;
+    }
+  }
+  if (!initialized) throw (initError || new Error('MCP initialize failed'));
+
+  await notify('notifications/initialized', {});
+  const short = shortMcpToolName(fullToolName, server.name);
+  return request('tools/call', { name: short, arguments: args || {} });
+}
+
+async function callStdioMcpTool(server, fullToolName, args, wireMode = 'framed') {
+  return new Promise((resolve, reject) => {
+    if (!server.command) {
+      reject(new Error('Only stdio MCP servers are supported in standalone right now.'));
+      return;
+    }
+
+    const proc = spawn(server.command, Array.isArray(server.args) ? server.args : [], {
+      env: { ...process.env, ...(server.env || {}) },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let stderrText = '';
+    let recvBuffer = '';
+    let nextId = 1;
+    const pending = new Map();
+    let settled = false;
+
+    const settleReject = (err) => {
+      if (settled) return;
+      settled = true;
+      try { proc.kill(); } catch { /* noop */ }
+      reject(err instanceof Error ? err : new Error(String(err)));
+    };
+
+    const settleResolve = (value) => {
+      if (settled) return;
+      settled = true;
+      try { proc.kill(); } catch { /* noop */ }
+      resolve(value);
+    };
+
+    const onMessage = (msg) => {
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.id == null) return;
+      const p = pending.get(msg.id);
+      if (!p) return;
+      pending.delete(msg.id);
+      if (msg.error) {
+        p.reject(new Error(String(msg.error.message || 'MCP error')));
+        return;
+      }
+      p.resolve(msg.result);
+    };
+
+    const onRawMessage = (raw) => {
+      let msg;
+      try { msg = JSON.parse(raw); } catch { return; }
+      onMessage(msg);
+    };
+
+    const drainBuffer = () => {
+      while (recvBuffer.length > 0) {
+        const trimmed = recvBuffer.replace(/^[\r\n]+/, '');
+        if (trimmed.length !== recvBuffer.length) recvBuffer = trimmed;
+        const headerEndRfc = recvBuffer.indexOf('\r\n\r\n');
+        const headerEndLf = recvBuffer.indexOf('\n\n');
+        let headerEnd = -1;
+        let sepLen = 0;
+        if (headerEndRfc >= 0 && (headerEndLf < 0 || headerEndRfc < headerEndLf)) {
+          headerEnd = headerEndRfc;
+          sepLen = 4;
+        } else if (headerEndLf >= 0) {
+          headerEnd = headerEndLf;
+          sepLen = 2;
+        }
+
+        const looksFramed = /^content-length\s*:/i.test(recvBuffer);
+        if (looksFramed) {
+          if (headerEnd < 0) return;
+          const headerBlock = recvBuffer.slice(0, headerEnd);
+          const lenMatch = headerBlock.match(/(?:^|\r?\n)content-length\s*:\s*(\d+)/i);
+          if (!lenMatch) {
+            recvBuffer = recvBuffer.slice(headerEnd + sepLen);
+            continue;
+          }
+          const bodyLength = Number.parseInt(lenMatch[1], 10);
+          const bodyStart = headerEnd + sepLen;
+          if (recvBuffer.length < bodyStart + bodyLength) return;
+          const body = recvBuffer.slice(bodyStart, bodyStart + bodyLength);
+          recvBuffer = recvBuffer.slice(bodyStart + bodyLength);
+          onRawMessage(body);
+          continue;
+        }
+
+        const lineEnd = recvBuffer.indexOf('\n');
+        if (lineEnd < 0) return;
+        const line = recvBuffer.slice(0, lineEnd).trim();
+        recvBuffer = recvBuffer.slice(lineEnd + 1);
+        if (!line) continue;
+        onRawMessage(line);
+      }
+    };
+
+    proc.stdout.on('data', (d) => {
+      recvBuffer += String(d);
+      drainBuffer();
+    });
+
+    proc.stderr.on('data', (d) => {
+      const msg = String(d).trim();
+      if (msg) stderrText = `${stderrText}\n${msg}`.trim();
+    });
+
+    proc.on('error', (e) => {
+      settleReject(new Error(e.message || 'Failed to start MCP process'));
+    });
+
+    const request = (method, params, timeoutMs = 8000) => {
+      const id = nextId++;
+      const payload = JSON.stringify({ jsonrpc: '2.0', id, method, params });
+      return new Promise((resolveReq, rejectReq) => {
+        const timer = setTimeout(() => {
+          pending.delete(id);
+          rejectReq(new Error(`Timeout waiting for ${method}`));
+        }, timeoutMs);
+        pending.set(id, {
+          resolve: (v) => { clearTimeout(timer); resolveReq(v); },
+          reject: (e) => { clearTimeout(timer); rejectReq(e); },
+        });
+        if (wireMode === 'newline') proc.stdin.write(`${payload}\n`);
+        else proc.stdin.write(framedPayload(payload));
+      });
+    };
+
+    const notify = (method, params) => {
+      const payload = JSON.stringify({ jsonrpc: '2.0', method, params });
+      if (wireMode === 'newline') proc.stdin.write(`${payload}\n`);
+      else proc.stdin.write(framedPayload(payload));
+    };
+
+    (async () => {
+      try {
+        const protocolVersions = ['2025-03-26', '2024-11-05', '2024-10-07'];
+        let initialized = false;
+        let initError = null;
+        for (const protocolVersion of protocolVersions) {
+          try {
+            await request('initialize', {
+              protocolVersion,
+              capabilities: {},
+              clientInfo: { name: 'fortress-chat-standalone', version: '0.1.0' },
+            }, 8000);
+            initialized = true;
+            break;
+          } catch (e) {
+            initError = e;
+          }
+        }
+        if (!initialized) {
+          throw initError || new Error('MCP initialize failed');
+        }
+
+        notify('notifications/initialized', {});
+        const short = shortMcpToolName(fullToolName, server.name);
+        const result = await request('tools/call', { name: short, arguments: args || {} }, 12000);
+        settleResolve(result);
+      } catch (e) {
+        const detail = stderrText ? ` ${stderrText}` : '';
+        settleReject(new Error(`${e instanceof Error ? e.message : String(e)}${detail}`.trim()));
+      }
+    })();
+  });
+}
+
+async function runMcpTool(server, fullToolName, args) {
+  if (server.command) {
+    try {
+      return await callStdioMcpTool(server, fullToolName, args, 'framed');
+    } catch (e) {
+      const msg = String(e instanceof Error ? e.message : e).toLowerCase();
+      if (!msg.includes('timeout waiting for initialize')) throw e;
+      return callStdioMcpTool(server, fullToolName, args, 'newline');
+    }
+  }
+  return callHttpMcpTool(server, fullToolName, args);
+}
+
+async function maybeRunMcpSearch(win, userText) {
+  if (!isSearchIntent(userText)) return null;
+
+  const activeServer = String(state.activeMcpServerName || '').trim();
+  if (!activeServer) {
+    post(win, { type: 'hint', message: 'MCP search routing is strict: pick an active MCP server first.' });
+    return null;
+  }
+
+  if (!Array.isArray(state.mcpTools) || state.mcpTools.length === 0) {
+    await refreshMcpTools(win, activeServer).catch(() => undefined);
+  }
+
+  const tools = Array.isArray(state.mcpTools)
+    ? state.mcpTools.filter((t) => toolServerName(t) === activeServer)
+    : [];
+  const activeToolName = String(state.activeMcpSearchToolName || '').trim();
+  if (!activeToolName) {
+    post(win, { type: 'hint', message: 'MCP search routing is strict: choose a specific MCP tool (Use tool) for search.' });
+    return null;
+  }
+  const tool = tools.find((t) => String(t.name || '') === activeToolName && looksLikeSearchTool(t));
+  if (!tool) {
+    post(win, { type: 'hint', message: `Active MCP search tool not available on server ${activeServer}. Re-select a tool.` });
+    return null;
+  }
+
+  const server = (state.mcpServers || []).find((s) => s && s.name === activeServer);
+  if (!server) return null;
+
+  const queryText = extractSearchQuery(userText);
+  const args = buildSearchToolArgs(tool, queryText);
+  try {
+    const result = await runMcpTool(server, tool.name, args);
+    const text = extractToolText(result).trim();
+    if (!text) return null;
+    post(win, { type: 'hint', message: `Used MCP tool ${tool.name} for web search context.` });
+    return `MCP tool ${tool.name} result:\n${text.slice(0, 10000)}`;
+  } catch {
+    post(win, { type: 'hint', message: `MCP search tool failed (${tool.name}); continuing without MCP context.` });
+    return null;
+  }
+}
+
+async function executeMcpToolImmediate(win, fullToolName, args) {
+  const toolName = String(fullToolName || '').trim();
+  if (!toolName) throw new Error('Missing MCP tool name.');
+  if (!Array.isArray(state.mcpTools) || state.mcpTools.length === 0) {
+    await refreshMcpTools(win, String(state.activeMcpServerName || '').trim()).catch(() => undefined);
+  }
+
+  const tool = (state.mcpTools || []).find((t) => String(t?.name || '') === toolName);
+  if (!tool) throw new Error(`MCP tool not found: ${toolName}`);
+
+  const serverName = toolServerName(tool);
+  if (!serverName) throw new Error(`Could not resolve MCP server for tool ${toolName}`);
+  if (state.activeMcpServerName && state.activeMcpServerName !== serverName) {
+    throw new Error(`Tool ${toolName} does not belong to active MCP server ${state.activeMcpServerName}.`);
+  }
+
+  const server = (state.mcpServers || []).find((s) => s && s.name === serverName);
+  if (!server) throw new Error(`MCP server not found: ${serverName}`);
+
+  const result = await runMcpTool(server, toolName, (args && typeof args === 'object' && !Array.isArray(args)) ? args : {});
+  const text = extractToolText(result).trim();
+  if (!text) throw new Error(`MCP tool returned no content: ${toolName}`);
+  return text;
 }
 
 function normalizeImportedMcpServers(parsed) {
@@ -1057,6 +1792,15 @@ function normalizeImportedMcpServers(parsed) {
           messageUrl: typeof row.messageUrl === 'string' ? row.messageUrl.trim() : undefined,
           headers: row.headers && typeof row.headers === 'object'
             ? Object.fromEntries(Object.entries(row.headers).filter(([, v]) => typeof v === 'string'))
+            : undefined,
+          oauth: row.oauth && typeof row.oauth === 'object' && !Array.isArray(row.oauth)
+            ? {
+              authorizeUrl: typeof row.oauth.authorizeUrl === 'string' ? row.oauth.authorizeUrl.trim() : undefined,
+              tokenUrl: typeof row.oauth.tokenUrl === 'string' ? row.oauth.tokenUrl.trim() : undefined,
+              clientId: typeof row.oauth.clientId === 'string' ? row.oauth.clientId.trim() : undefined,
+              scope: typeof row.oauth.scope === 'string' ? row.oauth.scope.trim() : undefined,
+              audience: typeof row.oauth.audience === 'string' ? row.oauth.audience.trim() : undefined,
+            }
             : undefined,
           disabled: row.disabled === true,
           builtin: row.builtin === true,
@@ -1085,6 +1829,15 @@ function normalizeImportedMcpServers(parsed) {
           headers: row.headers && typeof row.headers === 'object'
             ? Object.fromEntries(Object.entries(row.headers).filter(([, v]) => typeof v === 'string'))
             : undefined,
+          oauth: row.oauth && typeof row.oauth === 'object' && !Array.isArray(row.oauth)
+            ? {
+              authorizeUrl: typeof row.oauth.authorizeUrl === 'string' ? row.oauth.authorizeUrl.trim() : undefined,
+              tokenUrl: typeof row.oauth.tokenUrl === 'string' ? row.oauth.tokenUrl.trim() : undefined,
+              clientId: typeof row.oauth.clientId === 'string' ? row.oauth.clientId.trim() : undefined,
+              scope: typeof row.oauth.scope === 'string' ? row.oauth.scope.trim() : undefined,
+              audience: typeof row.oauth.audience === 'string' ? row.oauth.audience.trim() : undefined,
+            }
+            : undefined,
           disabled: row.disabled === true,
           builtin: false,
         };
@@ -1105,7 +1858,11 @@ function upsertStandaloneMcpServers(rows) {
     const clean = normalizeStandaloneMcpServerRow(row);
     if (clean) byName.set(clean.name, clean);
   }
-  state.mcpServers = [...byName.values()];
+  const merged = [...byName.values()];
+  if (merged.length > MAX_MCP_SERVERS) {
+    throw new Error(`You can configure up to ${MAX_MCP_SERVERS} MCP servers.`);
+  }
+  state.mcpServers = merged;
   saveStandaloneSettings();
 }
 
@@ -1137,6 +1894,8 @@ function postBoot(win) {
   post(win, { type: 'googleKeySet', set: false });
   post(win, { type: 'history', messages: state.messages });
   post(win, { type: 'chats', metas: state.chats, activeId: 'standalone' });
+  post(win, { type: 'chatMode', mode: state.chatMode, compareId: null, agentCapable: true });
+  post(win, { type: 'runMode', mode: state.runMode });
   post(win, {
     type: 'state',
     selectedId: 'standalone-local',
@@ -1165,11 +1924,75 @@ function handleMessage(win, msg) {
   if (!msg || typeof msg !== 'object') return;
   if (msg.type === 'openSource') return;
 
+  if (msg.type === 'setChatMode') {
+    const mode = String(msg.mode || 'ask');
+    if (!['ask', 'agent', 'plan', 'debug', 'multitask'].includes(mode)) return;
+    state.chatMode = mode;
+    state.chats = state.chats.map((chat) => (chat.id === 'standalone'
+      ? { ...chat, agentMode: mode === 'agent' || mode === 'plan' || mode === 'debug' }
+      : chat));
+    post(win, { type: 'chatMode', mode: state.chatMode, compareId: null, agentCapable: true });
+    post(win, { type: 'chats', metas: state.chats, activeId: 'standalone' });
+    return;
+  }
+
+  if (msg.type === 'setRunMode') {
+    const mode = String(msg.mode || 'manual');
+    state.runMode = mode === 'auto' ? 'auto' : 'manual';
+    post(win, { type: 'runMode', mode: state.runMode });
+    return;
+  }
+
+  if (msg.type === 'setActiveMcpServer') {
+    const name = String(msg.name || '').trim();
+    state.activeMcpServerName = name;
+    const activeToolName = String(state.activeMcpSearchToolName || '').trim();
+    if (activeToolName) {
+      const tool = (state.mcpTools || []).find((t) => String(t?.name || '') === activeToolName);
+      if (!tool || toolServerName(tool) !== name) state.activeMcpSearchToolName = '';
+    }
+    return;
+  }
+
+  if (msg.type === 'setActiveMcpSearchTool') {
+    const name = String(msg.name || '').trim();
+    if (!name) {
+      state.activeMcpSearchToolName = '';
+      return;
+    }
+    const tool = (state.mcpTools || []).find((t) => String(t?.name || '') === name);
+    if (!tool) return;
+    const serverName = toolServerName(tool);
+    if (state.activeMcpServerName && serverName && serverName !== state.activeMcpServerName) {
+      return;
+    }
+    state.activeMcpSearchToolName = name;
+    if (!state.activeMcpServerName && serverName) state.activeMcpServerName = serverName;
+    post(win, { type: 'hint', message: `Active MCP search tool set to ${name}.` });
+    return;
+  }
+
   if (msg.type === 'selectModel') {
     state.selectedModelId = typeof msg.id === 'string' && msg.id.trim() ? msg.id.trim() : null;
-    void syncStandaloneRuntime(win).catch((err) => {
-      post(win, { type: 'error', message: err instanceof Error ? err.message : String(err) });
-    });
+    void (async () => {
+      try {
+        const { client, status, policyModels } = await syncStandaloneRuntime(win);
+        const allModels = [...(policyModels.local || []), ...(policyModels.hidden || [])];
+        const selected = allModels.find((m) => m.id === state.selectedModelId);
+        if (!selected) return;
+        const selectedCatalogId = selected.local?.catalogId || selected.id;
+        if (Array.isArray(status.downloadedModelIds) && status.downloadedModelIds.includes(selectedCatalogId)) {
+          const started = await client.start(selectedCatalogId);
+          if (!started.ok) {
+            post(win, { type: 'startRejected', rejection: started.rejection, modelId: selectedCatalogId });
+            return;
+          }
+          await syncStandaloneRuntime(win);
+        }
+      } catch (err) {
+        post(win, { type: 'error', message: err instanceof Error ? err.message : String(err) });
+      }
+    })();
     return;
   }
 
@@ -1265,7 +2088,7 @@ function handleMessage(win, msg) {
           if (!started.ok) {
             post(win, { type: 'startRejected', rejection: started.rejection, modelId: selectedCatalogId });
             if (started.rejection?.reason === 'insufficient-memory') {
-              throw new Error('Unable to start model due to insufficient memory.');
+              throw new Error(formatInsufficientMemoryError(started.rejection, status?.ram?.totalBytes));
             }
             throw new Error('Unable to start selected local model.');
           }
@@ -1275,7 +2098,24 @@ function handleMessage(win, msg) {
 
         if (!activeStatus.endpoint) throw new Error('Local model endpoint is unavailable.');
 
+        const mcpContext = await maybeRunMcpSearch(win, userText);
         const convo = state.messages.map((m) => ({ role: m.role, content: String(m.content || '') }));
+        if (mcpContext && convo.length > 0) {
+          const last = convo[convo.length - 1];
+          convo[convo.length - 1] = {
+            role: last.role,
+            content: `${String(last.content || '')}\n\nUse this external MCP search context when answering:\n${mcpContext}`,
+          };
+        }
+
+        if (state.chatMode === 'plan' || state.chatMode === 'debug') {
+          convo.push({
+            role: 'system',
+            content: state.chatMode === 'plan'
+              ? 'You are in plan mode. Provide a clear step-by-step plan before implementation details.'
+              : 'You are in debug mode. Focus on root cause analysis and minimal fixes.',
+          });
+        }
         const res = await fetch(`${activeStatus.endpoint}/v1/chat/completions`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -1318,7 +2158,25 @@ function handleMessage(win, msg) {
   }
 
   if (msg.type === 'reloadMcp' || msg.type === 'fetchMcpTools') {
-    void refreshMcpTools(win);
+    const selected = msg.type === 'fetchMcpTools' && typeof msg.server === 'string' ? msg.server.trim() : '';
+    void refreshMcpTools(win, selected);
+    return;
+  }
+
+  if (msg.type === 'executeMcpTool') {
+    const name = String(msg.name || '').trim();
+    const args = (msg.args && typeof msg.args === 'object' && !Array.isArray(msg.args)) ? msg.args : {};
+    void (async () => {
+      try {
+        const output = await executeMcpToolImmediate(win, name, args);
+        const content = `MCP tool ${name} result:\n${output}`;
+        state.messages.push({ role: 'assistant', content });
+        post(win, { type: 'history', messages: state.messages });
+        post(win, { type: 'hint', message: `Executed MCP tool ${name}.` });
+      } catch (err) {
+        post(win, { type: 'error', message: err instanceof Error ? err.message : String(err) });
+      }
+    })();
     return;
   }
 
@@ -1390,20 +2248,55 @@ function handleMessage(win, msg) {
     const env = row?.env && typeof row.env === 'object' && !Array.isArray(row.env)
       ? Object.fromEntries(Object.entries(row.env).filter(([, v]) => typeof v === 'string'))
       : undefined;
+    const headers = row?.headers && typeof row.headers === 'object' && !Array.isArray(row.headers)
+      ? Object.fromEntries(Object.entries(row.headers).filter(([, v]) => typeof v === 'string'))
+      : undefined;
     const transport = row?.transport === 'stdio' || row?.transport === 'http' || row?.transport === 'sse'
       ? row.transport
       : undefined;
+    const messageUrl = row && typeof row.messageUrl === 'string' ? row.messageUrl.trim() : '';
+    const oauth = row?.oauth && typeof row.oauth === 'object' && !Array.isArray(row.oauth)
+      ? {
+        authorizeUrl: typeof row.oauth.authorizeUrl === 'string' ? row.oauth.authorizeUrl.trim() : undefined,
+        tokenUrl: typeof row.oauth.tokenUrl === 'string' ? row.oauth.tokenUrl.trim() : undefined,
+        clientId: typeof row.oauth.clientId === 'string' ? row.oauth.clientId.trim() : undefined,
+        scope: typeof row.oauth.scope === 'string' ? row.oauth.scope.trim() : undefined,
+        audience: typeof row.oauth.audience === 'string' ? row.oauth.audience.trim() : undefined,
+      }
+      : undefined;
+    const hasOauth = oauth && Object.values(oauth).some((v) => !!v);
 
-    upsertStandaloneMcpServers([{
-      name,
-      transport,
-      command: command || undefined,
-      args: args?.length ? args : undefined,
-      env: env && Object.keys(env).length ? env : undefined,
-      url: url || undefined,
-    }]);
+    try {
+      upsertStandaloneMcpServers([{
+        name,
+        transport,
+        command: command || undefined,
+        args: args?.length ? args : undefined,
+        env: env && Object.keys(env).length ? env : undefined,
+        url: url || undefined,
+        headers: headers && Object.keys(headers).length ? headers : undefined,
+        messageUrl: messageUrl || undefined,
+        oauth: hasOauth ? oauth : undefined,
+      }]);
+    } catch (err) {
+      post(win, { type: 'error', message: err instanceof Error ? err.message : String(err) });
+      return;
+    }
     postMcpState(win);
     post(win, { type: 'hint', message: `Saved MCP server "${name}".` });
+    return;
+  }
+
+  if (msg.type === 'startMcpOAuth') {
+    const serverName = String(msg.serverName || '').trim();
+    void (async () => {
+      try {
+        await startMcpOAuth(win, serverName);
+        await refreshMcpTools(win);
+      } catch (err) {
+        post(win, { type: 'error', message: err instanceof Error ? err.message : String(err) });
+      }
+    })();
     return;
   }
 
@@ -1482,6 +2375,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   loadStandaloneSettings();
+  ensureStandaloneMcpDefaults();
 
   const existing = readAuthSession();
   if (isSessionValid(existing)) createWindow();
