@@ -7,6 +7,9 @@
     "build": "npm run build -w @fortress-chat/shared && npm run build -w @fortress-chat/manager && npm run build -w fortress-chat",
     "watch": "npm run build -w @fortress-chat/shared && npm run watch -w fortress-chat",
     "dev": "npm run watch",
+    "desktop:dev": "npm run dev -w @fortress-chat/desktop",
+    "desktop:pack": "npm run pack:mac -w @fortress-chat/desktop",
+    "desktop:dist": "npm run dist:mac -w @fortress-chat/desktop",
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "npm run test:e2e -w fortress-chat",
     "lint": "npm run lint --workspaces --if-present"

@@ -1,0 +1,31 @@
+{
+  "name": "@fortress-chat/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "author": "curtismu7",
+  "description": "Standalone FortressChat desktop shell for macOS",
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "electron .",
+    "pack:mac": "electron-builder --mac --dir",
+    "dist:mac": "electron-builder --mac dmg"
+  },
+  "devDependencies": {
+    "electron": "32.2.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.fortresschat.desktop",
+    "productName": "FortressChat",
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "files": [
+      "src/**/*",
+      "../extension/media/**/*"
+    ]
+  }
+}

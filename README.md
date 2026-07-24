@@ -32,6 +32,24 @@ npm run test:e2e  # webview + command smoke tests (@vscode/test-electron)
 npm run dev       # esbuild watch (alias for npm run watch)
 ```
 
+## Standalone Mac App (Preview)
+
+Run FortressChat as a normal macOS app window (Electron shell):
+
+```bash
+npm install
+npm run desktop:dev
+```
+
+Build app artifacts:
+
+```bash
+npm run desktop:pack  # creates an unpacked .app in packages/desktop/dist/mac
+npm run desktop:dist  # creates a DMG in packages/desktop/dist
+```
+
+Note: this is a standalone preview shell. VS Code-specific integrations are not fully wired yet.
+
 **Full harness guide:** [`docs/DEV-HARNESS.md`](docs/DEV-HARNESS.md) — launch configs, hot reload, fixture sandbox, E2E, troubleshooting.
 
 ### Extension Development Host (VS Code or Cursor)

@@ -1,0 +1,10 @@
+# flyctl launch added from .gitignore
+**/node_modules
+**/dist
+**/out
+**/*.vsix
+**/*.tsbuildinfo
+**/.DS_Store
+**/.superpowers
+**/.vscode-test
+fly.toml
