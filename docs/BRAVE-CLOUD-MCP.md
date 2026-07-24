@@ -2,6 +2,15 @@
 
 This deploys the Brave wrapper as a hosted MCP server so Fortress clients use HTTPS instead of localhost.
 
+## Local Direct Mode (optional)
+
+For local testing only, Fortress can run Brave MCP directly over stdio (no wrapper):
+
+- Enable `fortressChat.braveDirectMcp.enabled`
+- Set `fortressChat.braveDirectMcp.apiKey` (or export `BRAVE_API_KEY` in your shell)
+
+This is convenient for development, but avoid it for shared or production environments because it places provider credentials in local settings/process env rather than keeping them server-side.
+
 ## 1) Build artifacts
 
 ```bash
@@ -55,9 +64,17 @@ curl -fsSL https://YOUR_BRAVE_WRAPPER_APP.fly.dev/healthz
 
 ## 6) Fortress MCP config (client-side)
 
-Add an MCP HTTP server in Fortress with:
-- URL: `https://YOUR_BRAVE_WRAPPER_APP.fly.dev/mcp`
-- Header: `Authorization: Bearer YOUR_MINTED_TOKEN`
+In Fortress MCP Settings use the simple flow:
+
+1. Run location: `Cloud (URL)`
+2. URL: `https://YOUR_BRAVE_WRAPPER_APP.fly.dev/mcp`
+3. Auth: `API key / bearer token`
+4. API key or token: `YOUR_MINTED_TOKEN`
+5. Auth header: `Authorization: Bearer`
+
+Then save the server.
+
+Equivalent raw MCP config:
 
 Example:
 
@@ -71,6 +88,8 @@ Example:
   }
 }
 ```
+
+If your endpoint expects Brave subscription-style headers instead, choose auth header `X-Subscription-Token` in the same UI.
 
 ## 7) Verify tools/list
 

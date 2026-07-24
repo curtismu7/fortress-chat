@@ -1,0 +1,33 @@
+{
+  "fortressChat.mcpServers": [
+    {
+      "name": "fs-test",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/Users/curtismuir/Development/fortress-code"
+      ]
+    },
+    {
+      "name": "brave-web",
+      "transport": "http",
+      "url": "https://YOUR_WEB_MCP_URL",
+      "headers": {
+        "X-Subscription-Token": "YOUR_BRAVE_API_KEY"
+      }
+    },
+    {
+      "name": "brave-news",
+      "transport": "http",
+      "url": "https://YOUR_NEWS_MCP_URL",
+      "headers": {
+        "X-Subscription-Token": "YOUR_BRAVE_API_KEY"
+      }
+    }
+  ],
+  "fortressChat.braveDirectMcp": {
+    "enabled": true,
+    "apiKey": "YOUR_BRAVE_API_KEY"
+  }
+}

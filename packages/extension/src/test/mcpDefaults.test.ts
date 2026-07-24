@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  parseImportedMcpServersJson,
   defaultPingOneMcpServer,
   normalizePingOneMcpSettings,
   PINGONE_MCP_SERVER_NAME,
@@ -73,5 +74,26 @@ describe('mcpDefaults', () => {
   it('normalizes partial pingOne settings', () => {
     expect(normalizePingOneMcpSettings(null)).toEqual({ enabled: true, rootDomain: 'pingone.com' });
     expect(defaultPingOneMcpServer(normalizePingOneMcpSettings({ enabled: true }))?.name).toBe('pingone');
+  });
+
+  it('parses imported mcp JSON from fenced markdown', () => {
+    const rows = parseImportedMcpServersJson(`\nHere is your config:\n\n\`\`\`json\n{\n  "servers": {\n    "news": {\n      "url": "https://example.com/mcp"\n    }\n  }\n}\n\`\`\`\n`);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe('news');
+    expect(rows[0].url).toBe('https://example.com/mcp');
+  });
+
+  it('parses imported mcp JSON with trailing text', () => {
+    const rows = parseImportedMcpServersJson('{"servers":{"demo":{"command":"npx","args":["-y","pkg"]}}} trailing note');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe('demo');
+    expect(rows[0].command).toBe('npx');
+  });
+
+  it('parses imported fortress mcp array assignment snippets', () => {
+    const rows = parseImportedMcpServersJson('fortressChat.mcpServers = [{"name":"alpha","url":"https://x.test/mcp"}]');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe('alpha');
+    expect(rows[0].url).toBe('https://x.test/mcp');
   });
 });

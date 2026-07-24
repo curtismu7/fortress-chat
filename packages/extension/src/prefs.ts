@@ -4,6 +4,24 @@ export interface Persona { id: string; name: string; systemPrompt: string; model
 export type ThemeMode = 'dark' | 'light';
 export interface MementoLike { get(key: string): unknown; update(key: string, value: unknown): unknown }
 
+const DEFAULT_PROMPTS: SavedPrompt[] = [
+  {
+    id: 'default-project-plan',
+    title: 'Plan A Project Change',
+    text: 'Create a concise implementation plan for this project change:\n- Goal:\n- Files likely to change:\n- Risks and edge cases:\n- Verification steps:\nKeep it short and actionable.',
+  },
+  {
+    id: 'default-project-review',
+    title: 'Review A Project Diff',
+    text: 'Review this project diff with a code-review mindset. Prioritize:\n1. Bugs and regressions\n2. Security or safety risks\n3. Missing tests\nReference exact files and suggest minimal fixes.',
+  },
+  {
+    id: 'default-project-test',
+    title: 'Add Tests For Change',
+    text: 'Based on the current project changes, propose and add focused tests:\n- unit tests for core logic\n- integration tests for user-facing behavior\n- one negative/error-path test\nThen summarize what is covered and what is still a gap.',
+  },
+];
+
 const PROMPTS_KEY = 'fortressChat.prompts';
 const PARAMS_KEY = 'fortressChat.params';
 const PERSONAS_KEY = 'fortressChat.personas';
@@ -29,12 +47,26 @@ function migrate(state: MementoLike, legacyKey: string, newKey: string): void {
   void state.update(legacyKey, undefined);
 }
 
+function seedDefaultPrompts(state: MementoLike): void {
+  const raw = state.get(PROMPTS_KEY);
+  if (!Array.isArray(raw)) {
+    void state.update(PROMPTS_KEY, DEFAULT_PROMPTS);
+    return;
+  }
+  const existing = raw.filter((p): p is SavedPrompt =>
+    !!p && typeof p.id === 'string' && typeof p.title === 'string' && typeof p.text === 'string');
+  const seen = new Set(existing.map((p) => p.id));
+  const missing = DEFAULT_PROMPTS.filter((p) => !seen.has(p.id));
+  if (missing.length) void state.update(PROMPTS_KEY, [...existing, ...missing]);
+}
+
 export class Prefs {
   constructor(private state: MementoLike) {
     migrate(state, LEGACY_PROMPTS, PROMPTS_KEY);
     migrate(state, LEGACY_PARAMS, PARAMS_KEY);
     migrate(state, LEGACY_PERSONAS, PERSONAS_KEY);
     migrate(state, LEGACY_THEME, THEME_KEY);
+    seedDefaultPrompts(state);
   }
 
   prompts(): SavedPrompt[] {

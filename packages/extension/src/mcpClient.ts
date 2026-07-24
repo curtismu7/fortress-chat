@@ -498,11 +498,23 @@ export class McpClient {
     if (this.looksLikeHtmlResponse(text, contentType)) {
       throw this.webPageUrlError(url);
     }
-    if (!res.ok) throw new Error(`MCP HTTP ${res.status}: ${text.slice(0, 200)}`);
+    if (!res.ok) throw new Error(this.formatHttpError(res.status, text));
     const msg = this.parseRpcMessage(text, contentType);
     if (!msg) throw new Error('MCP HTTP response was not valid JSON-RPC');
     if (msg.error) throw new Error(msg.error.message ?? 'MCP error');
     return msg.result;
+  }
+
+  private formatHttpError(status: number, bodyText: string): string {
+    const body = bodyText.slice(0, 200);
+    if (status === 401) {
+      const lower = bodyText.toLowerCase();
+      if (lower.includes('invalid_token') || lower.includes('no authorization provided')) {
+        return `MCP auth failed (401 invalid_token): add a Bearer token in MCP server config (Token field) or Headers JSON.`;
+      }
+      return `MCP auth failed (401): add a Bearer token in MCP server config (Token field) or Headers JSON. Server said: ${body}`;
+    }
+    return `MCP HTTP ${status}: ${body}`;
   }
 
   private parseRpcMessage(text: string, contentType: string): RpcMessage | null {
