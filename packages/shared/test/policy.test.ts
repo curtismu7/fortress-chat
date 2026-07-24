@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { loadPolicy, localEntries, chatLocalEntries, openRouterEntries, googleEntries, explainBlock, formatPolicyFatal, LOCAL_US_ONLY, visibleLocalEntries, hiddenLocalEntries } from '../src/policy';
+import { loadPolicy, localEntries, chatLocalEntries, openRouterEntries, googleEntries, explainBlock, formatPolicyFatal, LOCAL_US_ONLY, visibleLocalEntries, hiddenLocalEntries, DEFAULT_US_CLOUD_PROVIDER_ALLOWLIST } from '../src/policy';
 import { isAllowed } from '../src/governance';
 
 describe('policy registry', () => {
@@ -52,19 +52,35 @@ describe('policy registry', () => {
     expect(loadPolicy().some((e) => e.provider === 'google')).toBe(true);
   });
 
-  it('explainBlock names known non-US developers and blocks cloud slugs', () => {
+  it('explainBlock names known non-US developers and allows known US cloud developers', () => {
     expect(explainBlock('deepseek/deepseek-chat')).toMatch(/China/i);
     expect(explainBlock('qwen/qwen-2.5-72b-instruct')).toMatch(/China/i);
     expect(explainBlock('mistralai/mistral-large')).toMatch(/France/i);
-    expect(explainBlock('openai/gpt-4o')).toMatch(/Cloud models are not allowed/i);
-    expect(explainBlock('some/unknown-model')).toMatch(/Cloud models are not allowed/i);
+    expect(explainBlock('openai/gpt-4o')).toBeNull();
+    expect(explainBlock('google/gemini-2.5-pro')).toBeNull();
+    expect(explainBlock('meta-llama/llama-3.3-70b-instruct')).toBeNull();
+    expect(explainBlock('nvidia/llama-3.1-nemotron-ultra-253b-v1')).toBeNull();
+    expect(explainBlock('some/unknown-model')).toMatch(/US-based allowlist/i);
     expect(explainBlock(localEntries()[0]!.id)).toBeNull();
     expect(explainBlock(googleEntries()[0]!.id)).toBeNull();
   });
 
-  it('formatPolicyFatal includes the local-US-only message', () => {
+  it('supports configurable US cloud allowlist overrides', () => {
+    const googleOnly = ['google'];
+    expect(explainBlock('google/gemini-2.5-pro', googleOnly)).toBeNull();
+    expect(explainBlock('openai/gpt-4o', googleOnly)).toMatch(/US-based allowlist/i);
+
+    expect(explainBlock('openai/gpt-4o', ['openai/'])).toBeNull();
+    expect(explainBlock('nvidia/llama-3.1-nemotron-ultra-253b-v1', ['nvidia'])).toBeNull();
+    expect(explainBlock('openai/gpt-4o', [])).toBeNull();
+
+    expect(DEFAULT_US_CLOUD_PROVIDER_ALLOWLIST).toContain('google');
+    expect(DEFAULT_US_CLOUD_PROVIDER_ALLOWLIST).toContain('openai');
+  });
+
+  it('formatPolicyFatal includes the US-based policy message', () => {
     const msg = formatPolicyFatal('DeepSeek is a China-based developer.', 'deepseek/deepseek-chat');
-    expect(msg).toMatch(/Google Gemini/i);
+    expect(msg).toMatch(/US-based developers/i);
     expect(msg).toContain('deepseek/deepseek-chat');
   });
 

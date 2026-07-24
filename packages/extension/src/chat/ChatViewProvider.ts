@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { loadPolicy, chatLocalEntries, visibleLocalEntries, hiddenLocalEntries, googleEntries, explainBlock, formatPolicyFatal, type PolicyEntry, type StatusResponse } from '@fortress-chat/shared';
+import { loadPolicy, chatLocalEntries, visibleLocalEntries, hiddenLocalEntries, googleEntries, explainBlock, formatPolicyFatal, DEFAULT_US_CLOUD_PROVIDER_ALLOWLIST, type PolicyEntry, type StatusResponse } from '@fortress-chat/shared';
 import { DaemonClient } from '../daemon';
 import { RagService } from '../rag/service';
 import { Debouncer } from '../rag/watcher';
@@ -36,6 +36,7 @@ import { discoverSkills, type Skill } from '../skills';
 import { defaultModelsDirectory, getModelsDirectory, setModelsDirectory, syncModelsDirectoryConfig } from '../modelsDirectory';
 
 const SYSTEM_PROMPT = 'You are FortressChat, a helpful local coding assistant.';
+const MAX_MCP_SERVERS = 10;
 
 const MODE_PROMPTS: Record<string, string> = {
   plan: 'You are in plan mode. Outline a clear step-by-step plan before editing files. Discuss tradeoffs and wait for confirmation before applying changes unless the user asked you to implement immediately.',
@@ -77,6 +78,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private mediaWatcherStarted = false;
   private policyStopped = false;
   private mediaReloadDebouncer: Debouncer | null = null;
+  private policyLog: vscode.OutputChannel;
 
   constructor(private context: vscode.ExtensionContext, private connect: () => Promise<DaemonClient>) {
     this.store = SessionStore.load(context.workspaceState);
@@ -86,6 +88,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.prefs = new Prefs(this.context.globalState);
     this.autoApprove = !!this.context.workspaceState.get(AUTO_APPROVE_KEY);
     this.startMediaWatcher();
+    this.policyLog = vscode.window.createOutputChannel('FortressChat Policy');
+    this.context.subscriptions.push(this.policyLog);
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -203,6 +207,54 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
   private banner(message: string): void { this.post({ type: 'error', message: (message && message.trim()) ? message : 'FortressChat error (no details)' }); }
   private hint(message: string): void { this.post({ type: 'hint', message: (message && message.trim()) ? message : '' }); }
+
+  private usCloudProviderAllowlist(): string[] {
+    const raw = vscode.workspace.getConfiguration('fortressChat').get<string[]>('usCloudProviderAllowlist');
+    if (!Array.isArray(raw)) return [...DEFAULT_US_CLOUD_PROVIDER_ALLOWLIST];
+    const cleaned = raw
+      .map((s) => String(s).trim().toLowerCase().replace(/\/+$/g, ''))
+      .filter(Boolean);
+    return cleaned.length ? cleaned : [...DEFAULT_US_CLOUD_PROVIDER_ALLOWLIST];
+  }
+
+  private static providerDisplayName(prefix: string): string {
+    const lower = prefix.toLowerCase();
+    const map: Record<string, string> = {
+      google: 'Google',
+      openai: 'OpenAI',
+      anthropic: 'Anthropic',
+      meta: 'Meta',
+      'meta-llama': 'Meta / Llama',
+      facebook: 'Facebook',
+      nvidia: 'NVIDIA',
+      xai: 'xAI',
+      'x-ai': 'xAI',
+      microsoft: 'Microsoft',
+      amazon: 'Amazon',
+    };
+    return map[lower] ?? prefix;
+  }
+
+  private policyConfigMessage(): { type: 'policyConfig'; usCloudProviderAllowlist: string[]; providerLabels: string[] } {
+    const allowlist = this.usCloudProviderAllowlist();
+    return {
+      type: 'policyConfig',
+      usCloudProviderAllowlist: allowlist,
+      providerLabels: allowlist.map((prefix) => ChatViewProvider.providerDisplayName(prefix)),
+    };
+  }
+
+  private logPolicyBlock(slug: string, reason: string): void {
+    const firstSegment = slug.split('/')[0];
+    const prefix = slug.includes('/') ? String(firstSegment || slug).toLowerCase() : slug.toLowerCase();
+    const category = reason.toLowerCase().includes('allowlist')
+      ? 'allowlist'
+      : reason.toLowerCase().includes('china') || reason.toLowerCase().includes('france') || reason.toLowerCase().includes('canada')
+        ? 'non-us-developer'
+        : 'policy';
+    const stamp = new Date().toISOString();
+    this.policyLog.appendLine(`[${stamp}] block slugPrefix=${prefix} category=${category} reason=${reason}`);
+  }
 
   private async ensureClient(): Promise<DaemonClient> {
     if (!this.client) this.client = await this.connect();
@@ -323,11 +375,40 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.postMcpStatusTarget();
   }
 
-  private postMcpTools(): void {
-    this.postMcpToolsTarget();
+  private postMcpTools(serverName?: string): void {
+    this.postMcpToolsTarget(undefined, serverName);
   }
 
   private postMcpStatusTarget(emit?: (msg: unknown) => void): void {
+    const cfg = vscode.workspace.getConfiguration('fortressChat');
+    const cfgs = resolveMcpConfigs(cfg.get('mcpServers'), cfg.get('pingOneMcp'), cfg.get('braveDirectMcp'));
+    const byName = new Map(cfgs.map((row) => {
+      const headers = row.headers && typeof row.headers === 'object'
+        ? Object.fromEntries(Object.entries(row.headers).filter(([k, v]) => k !== 'Authorization' && typeof v === 'string'))
+        : undefined;
+      const oauthRow = (row as unknown as { oauth?: Record<string, unknown> }).oauth;
+      const oauth = oauthRow && typeof oauthRow === 'object'
+        ? {
+          authorizeUrl: typeof oauthRow.authorizeUrl === 'string' ? oauthRow.authorizeUrl : undefined,
+          tokenUrl: typeof oauthRow.tokenUrl === 'string' ? oauthRow.tokenUrl : undefined,
+          clientId: typeof oauthRow.clientId === 'string' ? oauthRow.clientId : undefined,
+          scope: typeof oauthRow.scope === 'string' ? oauthRow.scope : undefined,
+          audience: typeof oauthRow.audience === 'string' ? oauthRow.audience : undefined,
+        }
+        : undefined;
+      return [row.name, {
+        transport: row.transport,
+        command: row.command,
+        args: row.args,
+        env: row.env,
+        url: row.url,
+        messageUrl: row.messageUrl,
+        headers: headers && Object.keys(headers).length ? headers : undefined,
+        hasAuthorization: !!(row.headers && typeof row.headers.Authorization === 'string' && row.headers.Authorization.trim()),
+        oauth: oauth && Object.values(oauth).some((v) => !!v) ? oauth : undefined,
+      }];
+    }));
+
     const msg = {
       type: 'mcpStatus',
       servers: this.mcpClients.map((c) => ({
@@ -336,15 +417,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         tools: c.toolCount(),
         error: c.error(),
         builtin: c.isBuiltin(),
+        config: byName.get(c.serverName()),
       })),
     };
     if (emit) emit(msg);
     else this.post(msg);
   }
 
-  private postMcpToolsTarget(emit?: (msg: unknown) => void): void {
+  private postMcpToolsTarget(emit?: (msg: unknown) => void, serverName?: string): void {
     const tools = this.mcpClients.flatMap((c) => {
       const server = c.serverName();
+      if (serverName && server !== serverName) return [];
       const callable = c.listTools().map((t) => ({
         server,
         name: t.name,
@@ -419,9 +502,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.post({ type: 'agentUndo', available: !!(this.lastCheckpoint && this.lastCheckpoint.hasChanges()) });
   }
 
-  private async initMcp(): Promise<void> {
+  private async initMcp(serverName?: string): Promise<void> {
     const cfg = vscode.workspace.getConfiguration('fortressChat');
-    const cfgs = resolveMcpConfigs(cfg.get('mcpServers'), cfg.get('pingOneMcp'));
+    const cfgs = resolveMcpConfigs(cfg.get('mcpServers'), cfg.get('pingOneMcp'), cfg.get('braveDirectMcp'));
     for (const c of this.mcpClients) c.dispose();
     this.mcpClients = cfgs.map((cfg) => new McpClient(cfg));
     this.mcpTools = [];
@@ -432,10 +515,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       } catch { /* error stored on client */ }
     }
     this.postMcpStatus();
-    this.postMcpTools();
+    this.postMcpTools(serverName);
 
     const totalTools = this.mcpClients.reduce((n, c) => n + c.toolCount(), 0);
     if (totalTools === 0) {
+      const braveErr = this.mcpClients
+        .map((c) => c.error() || '')
+        .find((e) => e.toLowerCase().includes('brave_api_key') && e.toLowerCase().includes('required'));
+      if (braveErr) {
+        this.hint('Brave MCP requires BRAVE_API_KEY. Open MCP settings, edit brave-search, and set Env BRAVE_API_KEY to a valid key.');
+        return;
+      }
       const webPageErr = this.mcpClients
         .map((c) => c.error() || '')
         .find((e) => e.toLowerCase().includes('web page') || e.toLowerCase().includes('mcp test client'));
@@ -468,6 +558,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       byName.set(name, row);
     }
     const merged = [...byName.values()];
+    if (merged.length > MAX_MCP_SERVERS) {
+      throw new Error(`You can configure up to ${MAX_MCP_SERVERS} MCP servers.`);
+    }
     const cfg = vscode.workspace.getConfiguration('fortressChat');
     await cfg.update('mcpServers', merged, vscode.ConfigurationTarget.Workspace);
     await this.initMcp();
@@ -494,8 +587,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         vscode.window.onDidChangeActiveTextEditor(refresh),
         vscode.window.onDidChangeTextEditorSelection(refresh),
         vscode.workspace.onDidChangeConfiguration((e) => {
-          if (e.affectsConfiguration('fortressChat.mcpServers') || e.affectsConfiguration('fortressChat.pingOneMcp')) void this.initMcp();
+          if (e.affectsConfiguration('fortressChat.mcpServers') || e.affectsConfiguration('fortressChat.pingOneMcp') || e.affectsConfiguration('fortressChat.braveDirectMcp')) void this.initMcp();
           if (e.affectsConfiguration('fortressChat.skillDirectories')) this.refreshSkills();
+          if (e.affectsConfiguration('fortressChat.usCloudProviderAllowlist')) {
+            this.post(this.policyConfigMessage());
+          }
         }),
       );
       this.refreshSkills();
@@ -513,6 +609,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async pushFullState(target?: vscode.Webview): Promise<void> {
     const emit = (msg: unknown) => this.deliver(msg, target);
     emit({ type: 'policy', local: visibleLocalEntries(), hidden: hiddenLocalEntries(), google: googleEntries(), openrouter: [] });
+    emit(this.policyConfigMessage());
     emit({ type: 'prefs', prompts: this.prefs.prompts(), params: this.prefs.params(), theme: this.prefs.theme() });
     emit({ type: 'personas', personas: this.prefs.personas() });
     emit({ type: 'skills', skills: this.skills });
@@ -899,7 +996,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           await this.initMcp();
           return;
         case 'fetchMcpTools':
-          await this.initMcp();
+          await this.initMcp(typeof m.server === 'string' ? m.server.trim() : undefined);
           return;
         case 'importMcpJson': {
           const raw = String(m.text ?? '').trim();
@@ -974,6 +1071,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ? row.transport
             : undefined;
           const messageUrl = row && typeof row.messageUrl === 'string' ? row.messageUrl.trim() : '';
+          const oauthRow = row?.oauth && typeof row.oauth === 'object' && !Array.isArray(row.oauth)
+            ? row.oauth as Record<string, unknown>
+            : undefined;
+          const oauth = oauthRow
+            ? {
+              authorizeUrl: typeof oauthRow.authorizeUrl === 'string' ? oauthRow.authorizeUrl.trim() : undefined,
+              tokenUrl: typeof oauthRow.tokenUrl === 'string' ? oauthRow.tokenUrl.trim() : undefined,
+              clientId: typeof oauthRow.clientId === 'string' ? oauthRow.clientId.trim() : undefined,
+              scope: typeof oauthRow.scope === 'string' ? oauthRow.scope.trim() : undefined,
+              audience: typeof oauthRow.audience === 'string' ? oauthRow.audience.trim() : undefined,
+            }
+            : undefined;
+          const hasOauth = oauth && Object.values(oauth).some((v) => !!v);
 
           const clean: Record<string, unknown> = {
             name,
@@ -984,9 +1094,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             url: url || undefined,
             headers: headers && Object.keys(headers).length ? headers : undefined,
             messageUrl: messageUrl || undefined,
+            oauth: hasOauth ? oauth : undefined,
           };
-          await this.upsertMcpServers([clean]);
+          try {
+            await this.upsertMcpServers([clean]);
+          } catch (e) {
+            this.banner(e instanceof Error ? e.message : String(e));
+            return;
+          }
           this.hint(`Saved MCP server "${name}".`);
+          return;
+        }
+        case 'startMcpOAuth': {
+          this.banner('MCP OAuth connect is available in standalone desktop mode. In VS Code mode, add Authorization: Bearer ... in Token or Headers.');
           return;
         }
         case 'copyText': {
@@ -994,6 +1114,55 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           if (!text.trim()) return;
           await vscode.env.clipboard.writeText(text);
           this.post({ type: 'hint', message: 'Copied MCP args JSON to clipboard.' });
+          return;
+        }
+        case 'executeMcpTool': {
+          const name = String(m.name ?? '').trim();
+          const args = (m.args && typeof m.args === 'object' && !Array.isArray(m.args))
+            ? m.args as Record<string, unknown>
+            : {};
+          if (!name) {
+            this.banner('Missing MCP tool name.');
+            return;
+          }
+
+          this.postGenerating(true);
+          try {
+            const split = name.indexOf('__');
+            const server = split > 0 ? name.slice(0, split) : '';
+            const clients = server
+              ? this.mcpClients.filter((c) => c.serverName() === server)
+              : this.mcpClients;
+            if (clients.length === 0) {
+              this.banner(`MCP server not found for tool ${name}.`);
+              return;
+            }
+
+            let output = '';
+            let lastError = '';
+            for (const c of clients) {
+              try {
+                output = await c.callTool(name, args);
+                if (output.trim()) break;
+              } catch (e) {
+                lastError = e instanceof Error ? e.message : String(e);
+              }
+            }
+            if (!output.trim()) {
+              this.banner(lastError || `MCP tool call failed for ${name}.`);
+              return;
+            }
+
+            const session = this.store.active();
+            session.addAssistant(`MCP tool ${name} result:\n${output}`);
+            this.store.touchTitle();
+            this.store.save();
+            this.post({ type: 'history', messages: session.messages });
+            this.postChats();
+            this.hint(`Executed MCP tool ${name}.`);
+          } finally {
+            this.postGenerating(false);
+          }
           return;
         }
         case 'reloadSkills':
@@ -1281,8 +1450,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private handleAddModel(slug: string): void {
-    const reason = explainBlock(slug);
+    const reason = explainBlock(slug, this.usCloudProviderAllowlist());
     if (reason) {
+      this.logPolicyBlock(slug, reason);
       this.stopForPolicyViolation(reason, slug);
       return;
     }

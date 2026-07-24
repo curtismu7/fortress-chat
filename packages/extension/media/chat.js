@@ -10,14 +10,24 @@ document.addEventListener('click', (e) => {
 let streaming = '';
 let provider = 'local';
 let policy = { local: [], hidden: [], google: [], openrouter: [] };
+const DEFAULT_US_PROVIDER_PREFIXES = ['google', 'openai', 'anthropic', 'meta', 'meta-llama', 'facebook', 'nvidia', 'xai', 'x-ai', 'microsoft', 'amazon'];
 let selectedId = null;
 let settingsSaveToastTimer = null;
 let currentThemeMode = 'dark';
+
+function renderThemeToggle() {
+  const btn = $('theme-toggle-btn');
+  if (!btn) return;
+  btn.textContent = currentThemeMode === 'light' ? 'Light' : 'Dark';
+  btn.setAttribute('aria-pressed', currentThemeMode === 'dark' ? 'true' : 'false');
+  btn.title = 'Toggle light/dark mode';
+}
 
 function applyTheme(mode) {
   const next = mode === 'light' ? 'light' : 'dark';
   currentThemeMode = next;
   if (document.body) document.body.setAttribute('data-theme', next);
+  renderThemeToggle();
 }
 applyTheme(currentThemeMode);
 
@@ -38,6 +48,33 @@ function cloudModels() {
 
 function allPolicyModels() {
   return [...(policy.local || []), ...(policy.hidden || []), ...cloudModels()];
+}
+
+function cloudProviderLabel(prefix) {
+  const key = String(prefix || '').trim().toLowerCase();
+  const labels = {
+    google: 'Google',
+    openai: 'OpenAI',
+    anthropic: 'Anthropic',
+    meta: 'Meta',
+    'meta-llama': 'Meta / Llama',
+    facebook: 'Facebook',
+    nvidia: 'NVIDIA',
+    xai: 'xAI',
+    'x-ai': 'xAI',
+    microsoft: 'Microsoft',
+    amazon: 'Amazon',
+  };
+  return labels[key] || prefix;
+}
+
+function renderCloudProviderAllowlist(config) {
+  const list = $('cloud-provider-list');
+  if (!list) return;
+  const prefixes = Array.isArray(config && config.usCloudProviderAllowlist) && config.usCloudProviderAllowlist.length
+    ? config.usCloudProviderAllowlist
+    : DEFAULT_US_PROVIDER_PREFIXES;
+  list.innerHTML = prefixes.map((prefix) => `<li>${esc(cloudProviderLabel(prefix))} <span class="settings-provider-prefix">(${esc(prefix)})</span></li>`).join('');
 }
 
 const FOLDER_HINT = 'Please use File → Open Folder to use New agent.';
@@ -180,12 +217,76 @@ let mcpServers = [];
 let mcpTools = [];
 let mcpToolsFetchedAt = null;
 let openMcpModalOnNextTools = false;
+let activeMcpServer = '';
+let mcpToolsLoading = false;
+
+function setMcpToolsLoading(active) {
+  mcpToolsLoading = !!active;
+
+  const setButtonLoading = (id, defaultLabel) => {
+    const btn = $(id);
+    if (!btn) return;
+    btn.disabled = mcpToolsLoading;
+    btn.textContent = mcpToolsLoading ? 'Fetching...' : defaultLabel;
+  };
+
+  setButtonLoading('mcp-tools-fetch', 'Fetch tool list');
+  setButtonLoading('sidebar-mcp-fetch', 'Fetch tool list');
+
+  renderMcpToolsList();
+  renderMcpToolsModalTable();
+}
+
+function mcpLoadingHtml(message) {
+  return `<p class="settings-hint mcp-loading"><span class="fc-spinner" aria-hidden="true"></span><span>${esc(message || 'Loading MCP tools...')}</span></p>`;
+}
+
+function mcpLoadingInlineHtml(message) {
+  return `<span class="mcp-loading"><span class="fc-spinner" aria-hidden="true"></span><span>${esc(message || 'Loading MCP tools...')}</span></span>`;
+}
+
+function toggleThemeMode() {
+  const next = currentThemeMode === 'light' ? 'dark' : 'light';
+  applyTheme(next);
+  const picker = $('theme-picker');
+  if (picker) picker.value = next;
+  vscode.postMessage({ type: 'setTheme', mode: next });
+}
+
+function normalizeActiveMcpServer(nextName) {
+  const requested = String(nextName || '').trim();
+  if (!requested) return '';
+  const names = (mcpServers || []).map((s) => String(s?.name || '').trim()).filter(Boolean);
+  return names.includes(requested) ? requested : '';
+}
+
+function setActiveMcpServer(nextName) {
+  activeMcpServer = normalizeActiveMcpServer(nextName);
+  vscode.postMessage({ type: 'setActiveMcpServer', name: activeMcpServer || '' });
+  renderSidebarMcpServerPicker();
+  renderMcpToolsList();
+  renderMcpToolsModalTable();
+  if (actionMenuOpen && actionSub === 'mcp') renderActionMenu();
+}
+
+function mcpToolServerName(tool) {
+  const explicit = String(tool?.server || '').trim();
+  if (explicit) return explicit;
+  const fullName = String(tool?.name || '');
+  const idx = fullName.indexOf('__');
+  if (idx > 0) return fullName.slice(0, idx);
+  return '';
+}
 
 function filteredMcpTools(query) {
   const q = String(query || '').trim().toLowerCase();
   return (mcpTools || []).filter((t) => {
+    if (activeMcpServer) {
+      const server = mcpToolServerName(t);
+      if (server !== activeMcpServer) return false;
+    }
     if (!q) return true;
-    const hay = `${t.name || ''}\n${t.server || ''}\n${t.description || ''}`.toLowerCase();
+    const hay = `${t.name || ''}\n${mcpToolServerName(t)}\n${t.description || ''}`.toLowerCase();
     return hay.includes(q);
   });
 }
@@ -237,9 +338,15 @@ function formatAgentStep(step) {
   return s.length > 72 ? `${s.slice(0, 69)}…` : s;
 }
 
-function syncAgentToggle() {
-  const el = $('agent-toggle');
-  if (el) el.checked = chatMode === 'agent' || chatMode === 'plan' || chatMode === 'debug';
+function syncAgentModeControls() {
+  const picker = $('agent-mode-picker');
+  if (picker) {
+    if (chatMode === 'plan') picker.value = 'plan';
+    else if (chatMode === 'agent' || chatMode === 'debug') picker.value = 'agent';
+    else picker.value = 'ask';
+  }
+  const legacyToggle = $('agent-toggle');
+  if (legacyToggle) legacyToggle.checked = chatMode === 'agent' || chatMode === 'plan' || chatMode === 'debug';
 }
 
 function closeActionMenu() {
@@ -581,56 +688,560 @@ function importMcpJsonFromTextarea() {
   vscode.postMessage({ type: 'importMcpJson', text: raw });
 }
 
-function parseJsonInput(text, fallback) {
-  const raw = String(text || '').trim();
-  if (!raw) return fallback;
-  return JSON.parse(raw);
+function setInputValue(id, value) {
+  const el = $(id);
+  if (!el) return;
+  el.value = typeof value === 'string' ? value : '';
+}
+
+function setHidden(id, hidden) {
+  const el = $(id);
+  if (!el) return;
+  el.hidden = !!hidden;
+}
+
+function clearMcpInputErrors() {
+  [
+    'mcp-form-name',
+    'mcp-form-command',
+    'mcp-form-url',
+    'mcp-form-api-key',
+    'mcp-form-args',
+    'mcp-form-env',
+    'mcp-form-headers',
+    'mcp-form-oauth-authorize-url',
+    'mcp-form-oauth-token-url',
+    'mcp-form-oauth-client-id',
+  ].forEach((id) => {
+    const el = $(id);
+    if (el) el.classList.remove('mcp-input-error');
+  });
+}
+
+function clearMcpFormErrors() {
+  clearMcpInputErrors();
+  const box = $('mcp-form-errors');
+  if (!box) return;
+  box.hidden = true;
+  box.innerHTML = '';
+}
+
+function markMcpFieldError(id, message, errors) {
+  const el = $(id);
+  if (el) el.classList.add('mcp-input-error');
+  errors.push(message);
+}
+
+function showMcpFormErrors(errors) {
+  const box = $('mcp-form-errors');
+  if (!box || !errors.length) return;
+  box.hidden = false;
+  box.innerHTML = errors.map((e) => `<div>${esc(e)}</div>`).join('');
+}
+
+function inferMcpLocation({ transport, command, url }) {
+  if (transport === 'stdio') return 'local';
+  if (command) return 'local';
+  if (url) return 'cloud';
+  return 'cloud';
+}
+
+function inferMcpAuth({ oauthAuthorizeUrl, oauthTokenUrl, oauthClientId, headers }) {
+  if (oauthAuthorizeUrl || oauthTokenUrl || oauthClientId) return 'oauth';
+  if (headers && typeof headers === 'object') {
+    if (typeof headers.Authorization === 'string' || typeof headers['X-Subscription-Token'] === 'string') {
+      return 'apiKey';
+    }
+  }
+  return 'none';
+}
+
+function inferApiHeaderModeFromUrl(urlText) {
+  try {
+    const host = new URL(String(urlText || '').trim()).hostname.toLowerCase();
+    if (host.includes('brave')) return 'subscription';
+  } catch {
+    return 'authorization';
+  }
+  return 'authorization';
+}
+
+function maybeAutoConfigureCloudAuth() {
+  const location = ($('mcp-form-location')?.value || 'cloud').trim();
+  if (location !== 'cloud') return;
+  const url = ($('mcp-form-url')?.value || '').trim();
+  if (!url) return;
+  const preferredHeader = inferApiHeaderModeFromUrl(url);
+  const auth = $('mcp-form-auth');
+  const header = $('mcp-form-api-header');
+  if (auth && auth.value === 'none' && preferredHeader === 'subscription') {
+    auth.value = 'apiKey';
+  }
+  if (header && (auth?.value === 'apiKey' || preferredHeader === 'subscription')) {
+    header.value = preferredHeader;
+  }
+}
+
+function updateMcpCloudHint() {
+  const hint = $('mcp-cloud-hint');
+  if (!hint) return;
+  const location = ($('mcp-form-location')?.value || 'cloud').trim();
+  const auth = ($('mcp-form-auth')?.value || 'none').trim();
+  const header = ($('mcp-form-api-header')?.value || 'authorization').trim();
+  const url = ($('mcp-form-url')?.value || '').trim();
+  const preferredHeader = inferApiHeaderModeFromUrl(url);
+
+  if (location !== 'cloud') {
+    hint.hidden = true;
+    hint.textContent = '';
+    return;
+  }
+
+  let text = 'Cloud setup: choose auth only if your endpoint requires it.';
+  if (!url) {
+    text = 'Enter a cloud MCP URL first. We can suggest auth defaults based on the host.';
+  } else if (preferredHeader === 'subscription') {
+    if (auth === 'apiKey' && header === 'subscription') {
+      text = 'Detected Brave-style endpoint. Using X-Subscription-Token for API key auth.';
+    } else if (auth === 'oauth') {
+      text = 'Detected Brave-style endpoint. OAuth is selected; switch to API key auth if required by your server.';
+    } else if (auth === 'none') {
+      text = 'Detected Brave-style endpoint. This usually needs API key auth with X-Subscription-Token.';
+    } else {
+      text = 'Detected Brave-style endpoint. API key auth typically uses X-Subscription-Token.';
+    }
+  } else if (auth === 'apiKey') {
+    text = header === 'authorization'
+      ? 'API key auth will send Authorization: Bearer <token>.'
+      : 'API key auth will send X-Subscription-Token: <token>.';
+  } else if (auth === 'oauth') {
+    text = 'OAuth selected. Save the server, then use Connect OAuth.';
+  }
+
+  hint.hidden = false;
+  hint.textContent = text;
+}
+
+function syncMcpFormVisibility() {
+  const location = ($('mcp-form-location')?.value || 'cloud').trim();
+  const auth = ($('mcp-form-auth')?.value || 'none').trim();
+  const isLocal = location === 'local';
+  const isCloud = !isLocal;
+
+  setHidden('mcp-row-command', !isLocal);
+  setHidden('mcp-row-url', !isCloud);
+  setHidden('mcp-row-auth', !isCloud);
+  setHidden('mcp-row-api-key', !(isCloud && auth === 'apiKey'));
+  setHidden('mcp-row-api-header', !(isCloud && auth === 'apiKey'));
+  setHidden('mcp-oauth-subsection', !(isCloud && auth === 'oauth'));
+  updateMcpCloudHint();
+}
+
+function ensureMcpFormDefaults() {
+  const location = $('mcp-form-location');
+  if (location && !location.value) location.value = 'cloud';
+  const auth = $('mcp-form-auth');
+  if (auth && !auth.value) auth.value = 'none';
+  const header = $('mcp-form-api-header');
+  if (header && !header.value) header.value = 'authorization';
+  syncMcpFormVisibility();
+}
+
+function applyMcpPresetPlayground() {
+  setInputValue('mcp-form-name', 'mcp-playground-online');
+  setInputValue('mcp-form-location', 'cloud');
+  setInputValue('mcp-form-auth', 'none');
+  setInputValue('mcp-form-api-key', '');
+  setInputValue('mcp-form-api-header', 'authorization');
+  setInputValue('mcp-form-transport', 'http');
+  setInputValue('mcp-form-command', '');
+  setInputValue('mcp-form-args', '');
+  setInputValue('mcp-form-url', 'https://mcpplaygroundonline.com/mcp-app-server');
+  setInputValue('mcp-form-message-url', '');
+  setInputValue('mcp-form-token', '');
+  setInputValue('mcp-form-headers', '');
+  setInputValue('mcp-form-env', '');
+  setInputValue('mcp-form-oauth-authorize-url', '');
+  setInputValue('mcp-form-oauth-token-url', '');
+  setInputValue('mcp-form-oauth-client-id', '');
+  setInputValue('mcp-form-oauth-scope', '');
+  setInputValue('mcp-form-oauth-audience', '');
+  clearMcpFormErrors();
+  syncMcpFormVisibility();
+}
+
+function applyMcpPresetBrave() {
+  setInputValue('mcp-form-name', 'brave-search');
+  setInputValue('mcp-form-location', 'local');
+  setInputValue('mcp-form-auth', 'none');
+  setInputValue('mcp-form-api-key', '');
+  setInputValue('mcp-form-api-header', 'authorization');
+  setInputValue('mcp-form-transport', 'stdio');
+  setInputValue('mcp-form-command', 'npx');
+  setInputValue('mcp-form-args', JSON.stringify(['-y', '@modelcontextprotocol/server-brave-search']));
+  setInputValue('mcp-form-url', '');
+  setInputValue('mcp-form-message-url', '');
+  setInputValue('mcp-form-token', '');
+  setInputValue('mcp-form-headers', '');
+  setInputValue('mcp-form-env', JSON.stringify({ BRAVE_API_KEY: 'YOUR_BRAVE_API_KEY' }));
+  setInputValue('mcp-form-oauth-authorize-url', '');
+  setInputValue('mcp-form-oauth-token-url', '');
+  setInputValue('mcp-form-oauth-client-id', '');
+  setInputValue('mcp-form-oauth-scope', '');
+  setInputValue('mcp-form-oauth-audience', '');
+  clearMcpFormErrors();
+  syncMcpFormVisibility();
+}
+
+function applyMcpPresetFilesystem() {
+  setInputValue('mcp-form-name', 'filesystem');
+  setInputValue('mcp-form-location', 'local');
+  setInputValue('mcp-form-auth', 'none');
+  setInputValue('mcp-form-api-key', '');
+  setInputValue('mcp-form-api-header', 'authorization');
+  setInputValue('mcp-form-transport', 'stdio');
+  setInputValue('mcp-form-command', 'npx');
+  setInputValue('mcp-form-args', JSON.stringify(['-y', '@modelcontextprotocol/server-filesystem', '/path/to/workspace']));
+  setInputValue('mcp-form-url', '');
+  setInputValue('mcp-form-message-url', '');
+  setInputValue('mcp-form-token', '');
+  setInputValue('mcp-form-headers', '');
+  setInputValue('mcp-form-env', '');
+  setInputValue('mcp-form-oauth-authorize-url', '');
+  setInputValue('mcp-form-oauth-token-url', '');
+  setInputValue('mcp-form-oauth-client-id', '');
+  setInputValue('mcp-form-oauth-scope', '');
+  setInputValue('mcp-form-oauth-audience', '');
+  clearMcpFormErrors();
+  syncMcpFormVisibility();
+}
+
+function applyMcpPresetCloudEndpoint() {
+  setInputValue('mcp-form-name', 'cloud-endpoint');
+  setInputValue('mcp-form-location', 'cloud');
+  setInputValue('mcp-form-auth', 'apiKey');
+  setInputValue('mcp-form-api-key', '');
+  setInputValue('mcp-form-api-header', 'authorization');
+  setInputValue('mcp-form-transport', 'http');
+  setInputValue('mcp-form-command', '');
+  setInputValue('mcp-form-args', '');
+  setInputValue('mcp-form-url', 'https://example.com/mcp');
+  setInputValue('mcp-form-message-url', '');
+  setInputValue('mcp-form-token', '');
+  setInputValue('mcp-form-headers', '');
+  setInputValue('mcp-form-env', '');
+  setInputValue('mcp-form-oauth-authorize-url', '');
+  setInputValue('mcp-form-oauth-token-url', '');
+  setInputValue('mcp-form-oauth-client-id', '');
+  setInputValue('mcp-form-oauth-scope', '');
+  setInputValue('mcp-form-oauth-audience', '');
+  clearMcpFormErrors();
+  maybeAutoConfigureCloudAuth();
+  syncMcpFormVisibility();
+}
+
+function defaultServerNameFromUrl(urlText) {
+  try {
+    const u = new URL(String(urlText || '').trim());
+    const host = u.hostname.replace(/^www\./, '').replace(/[^a-zA-Z0-9.-]/g, '-');
+    return host ? `${host}-mcp` : 'cloud-endpoint';
+  } catch {
+    return 'cloud-endpoint';
+  }
+}
+
+function quickAddApiKeyCloudServer() {
+  const url = (window.prompt('MCP endpoint URL (https://...)') || '').trim();
+  if (!url) return false;
+
+  const key = (window.prompt('API key or token') || '').trim();
+  if (!key) {
+    window.alert('API key/token is required.');
+    return false;
+  }
+
+  const nameInput = window.prompt('Server name (optional)', defaultServerNameFromUrl(url));
+  const name = (nameInput || '').trim() || defaultServerNameFromUrl(url);
+
+  const headerChoice = (window.prompt('Header mode: authorization or subscription', 'authorization') || 'authorization').trim().toLowerCase();
+  const apiHeaderMode = headerChoice === 'subscription' ? 'subscription' : 'authorization';
+
+  setInputValue('mcp-form-name', name);
+  setInputValue('mcp-form-location', 'cloud');
+  setInputValue('mcp-form-auth', 'apiKey');
+  setInputValue('mcp-form-transport', 'http');
+  setInputValue('mcp-form-url', url);
+  setInputValue('mcp-form-api-key', key);
+  setInputValue('mcp-form-api-header', apiHeaderMode);
+  clearMcpFormErrors();
+  syncMcpFormVisibility();
+  return saveMcpFormServer();
 }
 
 function saveMcpFormServer() {
+  clearMcpFormErrors();
   const name = ($('mcp-form-name')?.value || '').trim();
+  const location = ($('mcp-form-location')?.value || '').trim() || inferMcpLocation({
+    transport: ($('mcp-form-transport')?.value || '').trim(),
+    command: ($('mcp-form-command')?.value || '').trim(),
+    url: ($('mcp-form-url')?.value || '').trim(),
+  });
+  const authMode = ($('mcp-form-auth')?.value || '').trim() || 'none';
+  const apiKey = ($('mcp-form-api-key')?.value || '').trim();
+  const apiHeaderMode = ($('mcp-form-api-header')?.value || 'authorization').trim();
   const transportRaw = ($('mcp-form-transport')?.value || '').trim();
   const command = ($('mcp-form-command')?.value || '').trim();
   const url = ($('mcp-form-url')?.value || '').trim();
   const messageUrl = ($('mcp-form-message-url')?.value || '').trim();
+  const token = ($('mcp-form-token')?.value || '').trim();
+  const oauthAuthorizeUrl = ($('mcp-form-oauth-authorize-url')?.value || '').trim();
+  const oauthTokenUrl = ($('mcp-form-oauth-token-url')?.value || '').trim();
+  const oauthClientId = ($('mcp-form-oauth-client-id')?.value || '').trim();
+  const oauthScope = ($('mcp-form-oauth-scope')?.value || '').trim();
+  const oauthAudience = ($('mcp-form-oauth-audience')?.value || '').trim();
+  const errors = [];
+
   if (!name) {
-    window.alert('MCP server name is required.');
-    return false;
+    markMcpFieldError('mcp-form-name', 'MCP server name is required.', errors);
   }
-  if (!command && !url) {
-    window.alert('Provide either Command (stdio) or URL (http/sse).');
-    return false;
+  if (location === 'local' && !command) {
+    markMcpFieldError('mcp-form-command', 'Local mode requires a command.', errors);
   }
+  if (location === 'cloud' && !url) {
+    markMcpFieldError('mcp-form-url', 'Cloud mode requires a URL.', errors);
+  }
+  if (location !== 'local' && location !== 'cloud' && !command && !url) {
+    errors.push('Provide either Command (stdio) or URL (http/sse).');
+  }
+  if (location === 'cloud' && authMode === 'apiKey' && !apiKey) {
+    markMcpFieldError('mcp-form-api-key', 'API key auth requires a key/token.', errors);
+  }
+
   let args;
   let env;
   let headers;
-  try {
-    args = parseJsonInput(($('mcp-form-args')?.value || ''), undefined);
-    if (args !== undefined && !Array.isArray(args)) throw new Error('Args must be a JSON array.');
-    env = parseJsonInput(($('mcp-form-env')?.value || ''), undefined);
-    if (env !== undefined && (typeof env !== 'object' || Array.isArray(env))) throw new Error('Env must be a JSON object.');
-    headers = parseJsonInput(($('mcp-form-headers')?.value || ''), undefined);
-    if (headers !== undefined && (typeof headers !== 'object' || Array.isArray(headers))) throw new Error('Headers must be a JSON object.');
-  } catch (e) {
-    window.alert(e instanceof Error ? e.message : String(e));
+  const argsRaw = ($('mcp-form-args')?.value || '').trim();
+  const envRaw = ($('mcp-form-env')?.value || '').trim();
+  const headersRaw = ($('mcp-form-headers')?.value || '').trim();
+
+  if (argsRaw) {
+    try {
+      args = JSON.parse(argsRaw);
+      if (!Array.isArray(args)) throw new Error('Args must be an array.');
+    } catch {
+      markMcpFieldError('mcp-form-args', 'Args must be valid JSON array syntax.', errors);
+    }
+  }
+  if (envRaw) {
+    try {
+      env = JSON.parse(envRaw);
+      if (typeof env !== 'object' || env === null || Array.isArray(env)) throw new Error('Env must be an object.');
+    } catch {
+      markMcpFieldError('mcp-form-env', 'Env must be valid JSON object syntax.', errors);
+    }
+  }
+  if (headersRaw) {
+    try {
+      headers = JSON.parse(headersRaw);
+      if (typeof headers !== 'object' || headers === null || Array.isArray(headers)) throw new Error('Headers must be an object.');
+    } catch {
+      markMcpFieldError('mcp-form-headers', 'Headers must be valid JSON object syntax.', errors);
+    }
+  }
+
+  if (errors.length) {
+    showMcpFormErrors(errors);
     return false;
   }
+
+  if (token) {
+    const authValue = /^bearer\s+/i.test(token) ? token : `Bearer ${token}`;
+    headers = { ...(headers || {}), Authorization: authValue };
+  }
+
+  if (location === 'cloud' && authMode === 'apiKey' && apiKey) {
+    if (apiHeaderMode === 'subscription') {
+      headers = { ...(headers || {}), 'X-Subscription-Token': apiKey };
+    } else {
+      const authValue = /^bearer\s+/i.test(apiKey) ? apiKey : `Bearer ${apiKey}`;
+      headers = { ...(headers || {}), Authorization: authValue };
+    }
+  }
+
+  const oauth = {
+    authorizeUrl: oauthAuthorizeUrl || undefined,
+    tokenUrl: oauthTokenUrl || undefined,
+    clientId: oauthClientId || undefined,
+    scope: oauthScope || undefined,
+    audience: oauthAudience || undefined,
+  };
+  const hasOauthConfig = Object.values(oauth).some((v) => !!v);
+  const transport = transportRaw || (location === 'local' ? 'stdio' : undefined);
+
   const payload = {
     name,
-    transport: transportRaw || undefined,
+    transport,
     command: command || undefined,
     args,
     env,
     headers,
     url: url || undefined,
     messageUrl: messageUrl || undefined,
+    oauth: hasOauthConfig ? oauth : undefined,
   };
   vscode.postMessage({ type: 'saveMcpServer', server: payload });
   return true;
 }
 
+function serverConfigFromStatus(name) {
+  const n = String(name || '').trim();
+  if (!n) return null;
+  const row = (mcpServers || []).find((s) => String(s?.name || '') === n);
+  if (!row || !row.config || typeof row.config !== 'object') return null;
+  return row.config;
+}
+
+function fillMcpFormFromServer(name) {
+  const n = String(name || '').trim();
+  const cfg = serverConfigFromStatus(n);
+  if (!n || !cfg) return false;
+
+  const headers = cfg.headers && typeof cfg.headers === 'object' ? { ...cfg.headers } : {};
+  const oauth = cfg.oauth && typeof cfg.oauth === 'object' ? cfg.oauth : {};
+  const location = inferMcpLocation({
+    transport: String(cfg.transport || '').trim(),
+    command: String(cfg.command || '').trim(),
+    url: String(cfg.url || '').trim(),
+  });
+  const auth = inferMcpAuth({
+    oauthAuthorizeUrl: String(oauth.authorizeUrl || '').trim(),
+    oauthTokenUrl: String(oauth.tokenUrl || '').trim(),
+    oauthClientId: String(oauth.clientId || '').trim(),
+    headers,
+  });
+  const apiHeader = typeof headers['X-Subscription-Token'] === 'string' ? 'subscription' : 'authorization';
+
+  setInputValue('mcp-form-name', n);
+  setInputValue('mcp-form-location', location);
+  setInputValue('mcp-form-auth', auth);
+  setInputValue('mcp-form-api-key', '');
+  setInputValue('mcp-form-api-header', apiHeader);
+  setInputValue('mcp-form-transport', cfg.transport || '');
+  setInputValue('mcp-form-command', cfg.command || '');
+  setInputValue('mcp-form-url', cfg.url || '');
+  setInputValue('mcp-form-message-url', cfg.messageUrl || '');
+  setInputValue('mcp-form-args', Array.isArray(cfg.args) ? JSON.stringify(cfg.args) : '');
+  setInputValue('mcp-form-env', cfg.env && typeof cfg.env === 'object' ? JSON.stringify(cfg.env) : '');
+  setInputValue('mcp-form-token', '');
+
+  if (headers.Authorization) delete headers.Authorization;
+  if (headers['X-Subscription-Token']) delete headers['X-Subscription-Token'];
+  setInputValue('mcp-form-headers', Object.keys(headers).length ? JSON.stringify(headers) : '');
+
+  setInputValue('mcp-form-oauth-authorize-url', oauth.authorizeUrl || '');
+  setInputValue('mcp-form-oauth-token-url', oauth.tokenUrl || '');
+  setInputValue('mcp-form-oauth-client-id', oauth.clientId || '');
+  setInputValue('mcp-form-oauth-scope', oauth.scope || '');
+  setInputValue('mcp-form-oauth-audience', oauth.audience || '');
+
+  const apiKeyEl = $('mcp-form-api-key');
+  if (apiKeyEl) {
+    apiKeyEl.placeholder = auth === 'apiKey' ? 'Saved token is hidden. Enter a new key to replace it.' : 'Paste key/token';
+  }
+  clearMcpFormErrors();
+  syncMcpFormVisibility();
+  return true;
+}
+
+function renderMcpServerPicker() {
+  const sel = $('mcp-config-server');
+  if (!sel) return;
+  const prev = sel.value;
+  const names = (mcpServers || [])
+    .map((s) => String(s?.name || '').trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  sel.innerHTML = '<option value="">(new server)</option>'
+    + names.map((name) => `<option value="${esc(name)}">${esc(name)}</option>`).join('');
+  if (prev && names.includes(prev)) sel.value = prev;
+}
+
+function renderSidebarMcpServerPicker() {
+  const sel = $('sidebar-mcp-server');
+  if (!sel) return;
+  const names = (mcpServers || [])
+    .map((s) => String(s?.name || '').trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+
+  const current = normalizeActiveMcpServer(activeMcpServer);
+  activeMcpServer = current;
+
+  sel.innerHTML = '<option value="">All MCP servers</option>'
+    + names.map((name) => `<option value="${esc(name)}">${esc(name)}</option>`).join('');
+  sel.value = current;
+  sel.disabled = names.length === 0;
+}
+
+function saveMcpOAuthConfig() {
+  setInputValue('mcp-form-location', 'cloud');
+  setInputValue('mcp-form-auth', 'oauth');
+  syncMcpFormVisibility();
+  const name = ($('mcp-form-name')?.value || '').trim();
+  const authorizeUrl = ($('mcp-form-oauth-authorize-url')?.value || '').trim();
+  const tokenUrl = ($('mcp-form-oauth-token-url')?.value || '').trim();
+  const clientId = ($('mcp-form-oauth-client-id')?.value || '').trim();
+  if (!name) {
+    clearMcpFormErrors();
+    const errors = [];
+    markMcpFieldError('mcp-form-name', 'MCP server name is required.', errors);
+    showMcpFormErrors(errors);
+    return false;
+  }
+  if (!authorizeUrl || !tokenUrl || !clientId) {
+    clearMcpFormErrors();
+    const errors = [];
+    if (!authorizeUrl) markMcpFieldError('mcp-form-oauth-authorize-url', 'OAuth authorize URL is required.', errors);
+    if (!tokenUrl) markMcpFieldError('mcp-form-oauth-token-url', 'OAuth token URL is required.', errors);
+    if (!clientId) markMcpFieldError('mcp-form-oauth-client-id', 'OAuth client ID is required.', errors);
+    showMcpFormErrors(errors);
+    return false;
+  }
+  return saveMcpFormServer();
+}
+
+function connectMcpOAuth() {
+  setInputValue('mcp-form-location', 'cloud');
+  setInputValue('mcp-form-auth', 'oauth');
+  syncMcpFormVisibility();
+  const name = ($('mcp-form-name')?.value || '').trim();
+  const authorizeUrl = ($('mcp-form-oauth-authorize-url')?.value || '').trim();
+  const tokenUrl = ($('mcp-form-oauth-token-url')?.value || '').trim();
+  const clientId = ($('mcp-form-oauth-client-id')?.value || '').trim();
+  if (!name) {
+    clearMcpFormErrors();
+    const errors = [];
+    markMcpFieldError('mcp-form-name', 'Set MCP server name first, then save, then connect OAuth.', errors);
+    showMcpFormErrors(errors);
+    return false;
+  }
+  if (!authorizeUrl || !tokenUrl || !clientId) {
+    clearMcpFormErrors();
+    const errors = [];
+    if (!authorizeUrl) markMcpFieldError('mcp-form-oauth-authorize-url', 'Connect OAuth requires authorize URL.', errors);
+    if (!tokenUrl) markMcpFieldError('mcp-form-oauth-token-url', 'Connect OAuth requires token URL.', errors);
+    if (!clientId) markMcpFieldError('mcp-form-oauth-client-id', 'Connect OAuth requires client ID.', errors);
+    showMcpFormErrors(errors);
+    return false;
+  }
+  if (!saveMcpFormServer()) return false;
+  vscode.postMessage({ type: 'startMcpOAuth', serverName: name });
+  return true;
+}
+
 function openMcpSettingsPanel() {
   openSettings(true);
+  ensureMcpFormDefaults();
   const section = $('mcp-settings-section');
   if (section) {
     section.open = true;
@@ -644,8 +1255,14 @@ function clickIfPresent(id) {
 }
 
 function saveChatSettingsSection() {
-  const agentToggle = $('agent-toggle');
-  if (agentToggle) vscode.postMessage({ type: 'agentToggle', on: !!agentToggle.checked });
+  const modePicker = $('agent-mode-picker');
+  if (modePicker) {
+    const mode = String(modePicker.value || 'ask');
+    vscode.postMessage({ type: 'setChatMode', mode });
+  } else {
+    const agentToggle = $('agent-toggle');
+    if (agentToggle) vscode.postMessage({ type: 'agentToggle', on: !!agentToggle.checked });
+  }
   const comparePicker = $('compare-picker');
   if (comparePicker) vscode.postMessage({ type: 'setCompareModel', id: comparePicker.value || null });
   const personaPicker = $('persona-picker');
@@ -898,7 +1515,8 @@ function renderState(status) {
   if (sidebarModelLabel) sidebarModelLabel.textContent = m ? m.displayName : 'Choose model';
   const msgs = $('messages');
   if (msgs) msgs.hidden = !selectedId;
-  $('send').disabled = !ready;
+  // Allow send as soon as a model is selected; backend can start the model on demand.
+  $('send').disabled = !m;
   $('active-model').textContent = m ? m.displayName : 'Choose a model';
   const agentEl = $('agent-toggle');
   if (agentEl) {
@@ -916,6 +1534,10 @@ function setProvider(p) {
 window.addEventListener('message', (e) => {
   const m = e.data;
   if (m.type === 'policy') { policy = { local: m.local, hidden: m.hidden || [], google: m.google || [], openrouter: m.openrouter }; if (window.__status) renderState(window.__status); }
+  if (m.type === 'policyConfig') {
+    window.__policyConfig = m;
+    renderCloudProviderAllowlist(m);
+  }
   if (m.type === 'openRouterKeySet') {
     window.__orKeySet = m.set;
     if (window.__status) renderState(window.__status);
@@ -962,6 +1584,7 @@ window.addEventListener('message', (e) => {
     else clearHint();
   }
   if (m.type === 'error') {
+    if (mcpToolsLoading) setMcpToolsLoading(false);
     if (m.message) {
       const banner = $('banner');
       if (banner) banner.classList.remove('banner--hint');
@@ -1018,15 +1641,22 @@ window.addEventListener('message', (e) => {
   if (m.type === 'chatMode') {
     chatMode = m.mode || 'ask';
     window.__compareId = m.compareId || null;
-    syncAgentToggle();
+    syncAgentModeControls();
     updateModeBadge();
   }
   if (m.type === 'runMode') {
     runMode = m.mode === 'auto' ? 'auto' : 'manual';
     updateModeBar();
   }
-  if (m.type === 'mcpStatus') { mcpServers = m.servers || []; renderMcpList(); if (actionMenuOpen && actionSub === 'mcp') renderActionMenu(); }
+  if (m.type === 'mcpStatus') {
+    mcpServers = m.servers || [];
+    activeMcpServer = normalizeActiveMcpServer(activeMcpServer);
+    renderMcpList();
+    renderSidebarMcpServerPicker();
+    if (actionMenuOpen && actionSub === 'mcp') renderActionMenu();
+  }
   if (m.type === 'mcpTools') {
+    setMcpToolsLoading(false);
     mcpTools = m.tools || [];
     mcpToolsFetchedAt = Date.now();
     renderMcpToolsList();
@@ -1220,26 +1850,48 @@ function updateMeter() {
   el.classList.toggle('warn', est > win * 0.9);
   updateComposerStatus();
 }
+
+function formatGiB(bytes) {
+  return `${(Number(bytes || 0) / 2 ** 30).toFixed(1)} GB`;
+}
+
 function renderRejection(r, modelId) {
-  const need = Math.round(r.requiredBytes / 2 ** 30), have = Math.round(r.availableBytes / 2 ** 30);
-  const rows = r.foreign.map((p) => `<li>${esc(p.command.slice(0, 70))} — ${Math.round(p.rssBytes / 2 ** 30)} GB (pid ${p.pid})</li>`).join('');
+  const required = Number(r.requiredBytes || 0);
+  const available = Number(r.availableBytes || 0);
+  const missing = Math.max(0, required - available);
+  const foreign = Array.isArray(r.foreign) ? r.foreign : [];
+  const rows = foreign
+    .map((p) => `<li>${esc(String(p.command || '').slice(0, 70))} — ${formatGiB(p.rssBytes)} (pid ${p.pid})</li>`)
+    .join('');
   const setup = $('setup');
   if (setup) {
     setup.hidden = true;
     setup.innerHTML = '';
   }
   window.__pendingModelId = modelId;
-  window.__pendingKillPids = (r.foreign || []).map((p) => p.pid);
-  const hasForeign = r.foreign.length > 0;
+  window.__pendingKillPids = foreign.map((p) => p.pid);
+  const hasForeign = foreign.length > 0;
+  const wouldFitAfterKill = !!r.wouldFitAfterForeignKill;
+  const parts = [
+    'Unable to start model due to insufficient memory.',
+    `Required: ${formatGiB(required)}.`,
+    `Available: ${formatGiB(available)}.`,
+    `Short by: ${formatGiB(missing)}.`,
+  ];
   const msg = hasForeign
-    ? `Not enough memory (~${need} GB needed, ${have} GB free). Another llama-server is using RAM.`
-    : `Not enough memory (~${need} GB needed, ${have} GB free). Try a smaller model.`;
-  $('banner-text').innerHTML = `${esc(msg)}${hasForeign ? `<ul style="margin:8px 0 0;padding-left:18px">${rows}</ul>` : ''}`;
+    ? `${parts.join(' ')} Other llama-server processes are using RAM.`
+    : `${parts.join(' ')} Try a smaller local model.`;
+  const actions = hasForeign
+    ? (wouldFitAfterKill
+      ? '<div class="rejection-tip">Tip: stop the processes below, then retry.</div>'
+      : '<div class="rejection-tip">Stopping these processes may help, but you may still need a smaller model.</div>')
+    : '<div class="rejection-tip">No competing llama-server process found.</div>';
+  $('banner-text').innerHTML = `${esc(msg)}${actions}${hasForeign ? `<ul class="rejection-foreign-list">${rows}</ul>` : ''}`;
   const retry = $('banner-retry');
   if (retry) {
     retry.hidden = !hasForeign;
     retry.disabled = false;
-    retry.textContent = 'Stop other models and retry';
+    retry.textContent = wouldFitAfterKill ? 'Stop other models and retry' : 'Stop listed models and retry';
     retry.onclick = () => {
       retry.disabled = true;
       retry.textContent = 'Stopping other models…';
@@ -1489,14 +2141,18 @@ function renderMcpList() {
   const servers = mcpServers || [];
   if (!servers.length) {
     box.innerHTML = '<p class="settings-hint">No MCP servers configured.</p>';
+    renderMcpServerPicker();
     return;
   }
   box.innerHTML = servers.map((s) => {
     const status = s.connected ? 'connected' : 'offline';
-    const err = s.error ? ` — ${esc(s.error)}` : '';
+    const err = s.error ? `<span class="mcp-item-error">${esc(s.error)}</span>` : '';
     const tag = s.builtin ? ' · built-in' : '';
-    return `<div class="mcp-item"><span>${s.connected ? '●' : '○'} ${esc(s.name)}</span><span class="settings-hint">${status} · ${s.tools} tool(s)${tag}${err}</span></div>`;
+    const hasOauth = !!(s.config && s.config.oauth);
+    const detail = `${status} · ${s.tools} tool(s)${tag}${hasOauth ? ' · oauth' : ''}`;
+    return `<div class="mcp-item"><div><div>${s.connected ? '●' : '○'} ${esc(s.name)}</div><div class="settings-hint">${detail}${err ? ' — ' : ''}${err}</div></div><button type="button" class="mcp-tool-btn" data-mcp-load="${esc(s.name)}">Load</button></div>`;
   }).join('');
+  renderMcpServerPicker();
 }
 
 function toolSchemaSummary(schema) {
@@ -1524,10 +2180,156 @@ function argsTemplate(schema) {
   return out;
 }
 
+const BRAVE_NEWS_PARAM_SAMPLES = {
+  q: ['climate summit', 'ai regulation', 'elections', 'global markets', 'cybersecurity'],
+  country: ['US', 'FR', 'GB', 'DE', 'IN'],
+  search_lang: ['en', 'fr', 'es', 'de', 'hi'],
+  freshness: ['pd', 'pw', 'pm', 'py', 'all'],
+};
+
+let braveNewsActiveToolName = '';
+
+function isBraveNewsTool(tool) {
+  if (!tool || typeof tool !== 'object') return false;
+  const name = String(tool.name || '').toLowerCase();
+  const props = Object.keys(tool.inputSchema?.properties || {}).map((k) => k.toLowerCase());
+  const hasNewsParams = props.includes('q') && props.includes('country') && props.includes('search_lang');
+  if (name.includes('brave') && name.includes('news')) return true;
+  return hasNewsParams && (name.includes('news') || props.includes('freshness'));
+}
+
+function closeBraveNewsModal() {
+  const modal = $('brave-news-modal');
+  if (modal) modal.hidden = true;
+  braveNewsActiveToolName = '';
+}
+
+function openBraveNewsModal(tool) {
+  const modal = $('brave-news-modal');
+  const fields = $('brave-news-fields');
+  if (!modal || !fields || !tool) return;
+  const schemaProps = (tool.inputSchema?.properties && typeof tool.inputSchema.properties === 'object')
+    ? tool.inputSchema?.properties
+    : {};
+  const keys = ['q', 'country', 'search_lang', 'freshness'].filter((k) => Object.hasOwn(schemaProps, k));
+  braveNewsActiveToolName = String(tool.name || '');
+
+  fields.innerHTML = keys.map((key) => {
+    const prop = schemaProps[key] || {};
+    const desc = prop.description ? `<span class="settings-hint">${esc(String(prop.description))}</span>` : '';
+    const samples = BRAVE_NEWS_PARAM_SAMPLES[key] || [];
+    const opts = samples.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    const label = key === 'search_lang' ? 'search language' : key;
+    return `<div class="brave-news-field"><label for="brave-news-${esc(key)}">${esc(label)}</label><select id="brave-news-${esc(key)}">${opts}</select>${desc}</div>`;
+  }).join('');
+
+  modal.hidden = false;
+}
+
+function collectBraveNewsArgs(tool) {
+  const out = {};
+  const schemaProps = (tool?.inputSchema?.properties && typeof tool.inputSchema.properties === 'object')
+    ? tool.inputSchema?.properties
+    : {};
+  ['q', 'country', 'search_lang', 'freshness'].forEach((key) => {
+    if (!Object.hasOwn(schemaProps, key)) return;
+    const el = $(`brave-news-${key}`);
+    const val = (el && typeof el.value === 'string') ? el.value.trim() : '';
+    if (val) out[key] = val;
+  });
+  return out;
+}
+
+function requiredArgsTemplate(schema) {
+  if (!schema || typeof schema !== 'object' || !schema.properties || typeof schema.properties !== 'object') return {};
+  const req = Array.isArray(schema.required) ? schema.required : [];
+  if (!req.length) return {};
+  const out = {};
+  req.forEach((k) => {
+    if (Object.hasOwn(schema.properties, k)) out[k] = exampleForSchema(schema, k);
+  });
+  return out;
+}
+
+function preferredToolQuery(inputText) {
+  const text = String(inputText || '').trim();
+  if (!text) return '';
+  return text.replace(/^(search|find|look\s+up|web\s+search)\s*/i, '').trim() || text;
+}
+
+function schemaPropType(schema, key) {
+  if (!schema || typeof schema !== 'object') return '';
+  if (!schema.properties || typeof schema.properties !== 'object') return '';
+  const p = schema.properties[key];
+  return p && typeof p.type === 'string' ? p.type : '';
+}
+
+function isEmptyArgValue(v) {
+  if (v == null) return true;
+  if (typeof v === 'string') return !v.trim();
+  if (Array.isArray(v)) return v.length === 0;
+  if (typeof v === 'object') return Object.keys(v).length === 0;
+  return false;
+}
+
+function hydrateRequiredArgsFromInput(args, schema, inputText) {
+  const out = { ...(args || {}) };
+  const query = preferredToolQuery(inputText);
+  if (!query) return out;
+  const keys = Object.keys(out);
+  for (const k of keys) {
+    const lower = k.toLowerCase();
+    const t = schemaPropType(schema, k);
+    const looksLikeQuery = lower === 'q' || lower === 'query' || lower === 'keywords' || lower === 'search' || lower === 'prompt' || lower === 'text';
+    if (looksLikeQuery && t === 'string' && isEmptyArgValue(out[k])) {
+      out[k] = query;
+    }
+  }
+  return out;
+}
+
+function promptForMissingRequiredArgs(args, schema) {
+  const out = { ...(args || {}) };
+  const req = Array.isArray(schema?.required) ? schema.required : [];
+  for (const key of req) {
+    if (!isEmptyArgValue(out[key])) continue;
+    const t = schemaPropType(schema, key);
+    if (t === 'string') {
+      const entered = window.prompt(`Enter required MCP arg: ${key}`);
+      if (entered == null) return null;
+      out[key] = entered.trim();
+    } else if (t === 'number' || t === 'integer') {
+      const entered = window.prompt(`Enter required MCP arg: ${key} (number)`);
+      if (entered == null) return null;
+      const n = Number(entered);
+      if (!Number.isFinite(n)) {
+        window.alert(`Invalid number for ${key}.`);
+        return null;
+      }
+      out[key] = t === 'integer' ? Math.trunc(n) : n;
+    } else if (t === 'boolean') {
+      const entered = window.prompt(`Enter required MCP arg: ${key} (true/false)`);
+      if (entered == null) return null;
+      const raw = entered.trim().toLowerCase();
+      if (raw !== 'true' && raw !== 'false') {
+        window.alert(`Invalid boolean for ${key}. Use true or false.`);
+        return null;
+      }
+      out[key] = raw === 'true';
+    } else {
+      // For object/array/unknown, require manual JSON edit via Copy args path.
+      window.alert(`Required arg ${key} has unsupported type for quick input. Use Copy args JSON and provide full arguments manually.`);
+      return null;
+    }
+  }
+  return out;
+}
+
 function mcpUpdatedLabel() {
   if (!mcpToolsFetchedAt) return 'not fetched yet';
   try {
-    return `updated ${new Date(mcpToolsFetchedAt).toLocaleTimeString()}`;
+    const base = `updated ${new Date(mcpToolsFetchedAt).toLocaleTimeString()}`;
+    return activeMcpServer ? `${base} · active: ${activeMcpServer}` : base;
   } catch {
     return 'updated recently';
   }
@@ -1543,6 +2345,12 @@ function renderMcpToolsModalTable() {
   const box = $('mcp-tools-modal-list');
   const status = $('mcp-tools-modal-status');
   if (!box) return;
+
+  if (mcpToolsLoading) {
+    if (status) status.innerHTML = mcpLoadingInlineHtml('Fetching MCP tools...');
+    box.innerHTML = mcpLoadingHtml('Loading tool list from active MCP server...');
+    return;
+  }
 
   const modalSearch = $('mcp-tools-modal-search');
   const q = (modalSearch?.value || '').trim().toLowerCase();
@@ -1561,7 +2369,7 @@ function renderMcpToolsModalTable() {
 
   const byServer = new Map();
   tools.forEach((t) => {
-    const key = t.server || 'unknown';
+    const key = mcpToolServerName(t) || 'unknown';
     const arr = byServer.get(key) || [];
     arr.push(t);
     byServer.set(key, arr);
@@ -1607,8 +2415,9 @@ function openMcpToolsModal() {
 
 function requestMcpToolsAndShow() {
   openMcpModalOnNextTools = true;
+  setMcpToolsLoading(true);
   openMcpToolsModal();
-  vscode.postMessage({ type: 'fetchMcpTools' });
+  vscode.postMessage({ type: 'fetchMcpTools', server: activeMcpServer || undefined });
 }
 
 function closeMcpToolsModal() {
@@ -1622,6 +2431,12 @@ function renderMcpToolsList() {
   const countEl = $('mcp-tools-count');
   const toolsSearch = $('mcp-tools-search');
   const q = (toolsSearch?.value || '').trim().toLowerCase();
+
+  if (mcpToolsLoading) {
+    if (countEl) countEl.innerHTML = mcpLoadingInlineHtml('Fetching MCP tools...');
+    box.innerHTML = mcpLoadingHtml('Loading tool list from active MCP server...');
+    return;
+  }
 
   const tools = filteredMcpTools(q);
 
@@ -1639,7 +2454,7 @@ function renderMcpToolsList() {
 
   const byServer = new Map();
   tools.forEach((t) => {
-    const key = t.server || 'unknown';
+    const key = mcpToolServerName(t) || 'unknown';
     const arr = byServer.get(key) || [];
     arr.push(t);
     byServer.set(key, arr);
@@ -1670,21 +2485,27 @@ function runMcpToolAction(action, toolName) {
   if (!toolName) return;
   const tool = (mcpTools || []).find((t) => String(t.name || '') === toolName);
   if (tool?.displayOnly) return;
-  const args = JSON.stringify(argsTemplate(tool?.inputSchema), null, 2);
+  const fullArgs = JSON.stringify(argsTemplate(tool?.inputSchema), null, 2);
+  const input = $('input');
+  let requiredObj = requiredArgsTemplate(tool?.inputSchema);
+  requiredObj = hydrateRequiredArgsFromInput(requiredObj, tool?.inputSchema, input?.value || '');
+  const completedRequired = promptForMissingRequiredArgs(requiredObj, tool?.inputSchema);
+  if (completedRequired == null) return;
+  const requiredArgs = JSON.stringify(completedRequired, null, 2);
   if (action === 'use') {
-    const input = $('input');
-    if (!input) return;
-    const text = `Use MCP tool ${toolName} with arguments:\n${args}`;
-    input.value = input.value ? `${input.value}\n\n${text}` : text;
-    resizeInput();
-    updateMeter();
-    input.focus();
+    vscode.postMessage({ type: 'setActiveMcpSearchTool', name: toolName });
+    if (isBraveNewsTool(tool)) {
+      openBraveNewsModal(tool);
+      return;
+    }
+    const args = requiredArgs && requiredArgs !== '{}' ? completedRequired : {};
+    vscode.postMessage({ type: 'executeMcpTool', name: toolName, args });
     closeMcpToolsModal();
     closeSettings(false);
     return;
   }
   if (action === 'copy') {
-    vscode.postMessage({ type: 'copyText', text: args });
+    vscode.postMessage({ type: 'copyText', text: fullArgs });
   }
 }
 
@@ -1762,6 +2583,7 @@ function openSettings(open) {
   scrim.hidden = !open;
   if (open) {
     fillParams(); renderPrompts(); fillMemory(); renderPersonas(); fillPersonaPicker();
+    syncAgentModeControls();
     if (window.__modelsDirectory) renderModelsDirectory(window.__modelsDirectory);
   }
 }
@@ -1942,6 +2764,7 @@ $('input').addEventListener('input', () => {
   updateMeter();
   resizeInput();
 });
+{ const _amp = $('agent-mode-picker'); if (_amp) _amp.onchange = () => vscode.postMessage({ type: 'setChatMode', mode: _amp.value || 'ask' }); }
 { const _at = $('agent-toggle'); if (_at) _at.onchange = (e) => vscode.postMessage({ type: 'agentToggle', on: e.target.checked }); }
 document.querySelectorAll('.mode-pill').forEach((btn) => {
   btn.onclick = () => {
@@ -1967,6 +2790,7 @@ $('banner-close').onclick = () => { $('banner').hidden = true; };
 { const _ua = $('undo-agent'); if (_ua) _ua.onclick = () => vscode.postMessage({ type: 'undoAgentRun' }); }
 { const _pp = $('persona-picker'); if (_pp) _pp.onchange = () => vscode.postMessage({ type: 'setPersona', id: _pp.value || null }); }
 { const _tp = $('theme-picker'); if (_tp) _tp.onchange = () => applyTheme(_tp.value); }
+{ const _ttb = $('theme-toggle-btn'); if (_ttb) _ttb.onclick = () => toggleThemeMode(); }
 { const _sp = $('skill-picker'); if (_sp) _sp.onchange = () => vscode.postMessage({ type: 'setSkill', id: _sp.value || null }); }
 { const _sr = $('skills-reload'); if (_sr) _sr.onclick = () => vscode.postMessage({ type: 'reloadSkills' }); }
 { const _ss = $('skills-settings'); if (_ss) _ss.onclick = () => vscode.postMessage({ type: 'openSkillSettings' }); }
@@ -1991,6 +2815,10 @@ $('banner-close').onclick = () => { $('banner').hidden = true; };
   if (_smt) _smt.onclick = () => openMcpToolsModal();
 }
 {
+  const _smsel = $('sidebar-mcp-server');
+  if (_smsel) _smsel.onchange = () => setActiveMcpServer(_smsel.value || '');
+}
+{
   const _mtms = $('mcp-tools-modal-search');
   if (_mtms) _mtms.oninput = () => renderMcpToolsModalTable();
 }
@@ -2006,12 +2834,59 @@ $('banner-close').onclick = () => { $('banner').hidden = true; };
 }
 { const _mtmc = $('mcp-tools-modal-close'); if (_mtmc) _mtmc.onclick = () => closeMcpToolsModal(); }
 { const _mtms = $('mcp-tools-modal-scrim'); if (_mtms) _mtms.onclick = () => closeMcpToolsModal(); }
+{ const _bnmc = $('brave-news-modal-close'); if (_bnmc) _bnmc.onclick = () => closeBraveNewsModal(); }
+{ const _bnms = $('brave-news-modal-scrim'); if (_bnms) _bnms.onclick = () => closeBraveNewsModal(); }
+{ const _bnca = $('brave-news-cancel'); if (_bnca) _bnca.onclick = () => closeBraveNewsModal(); }
+{ const _bnin = $('brave-news-insert'); if (_bnin) _bnin.onclick = () => {
+  const tool = (mcpTools || []).find((t) => String(t.name || '') === braveNewsActiveToolName);
+  if (!tool) { closeBraveNewsModal(); return; }
+  const args = collectBraveNewsArgs(tool);
+  vscode.postMessage({ type: 'setActiveMcpSearchTool', name: braveNewsActiveToolName });
+  vscode.postMessage({ type: 'executeMcpTool', name: braveNewsActiveToolName, args });
+  closeBraveNewsModal();
+  closeMcpToolsModal();
+  closeSettings(false);
+}; }
 { const _mr = $('mcp-reload'); if (_mr) _mr.onclick = () => vscode.postMessage({ type: 'reloadMcp' }); }
 { const _mif = $('mcp-import-file'); if (_mif) _mif.onclick = () => vscode.postMessage({ type: 'importMcpJsonFile' }); }
 { const _mi = $('mcp-import'); if (_mi) _mi.onclick = () => openMcpJsonPastePanel(); }
 { const _mit = $('mcp-import-text'); if (_mit) _mit.onclick = () => importMcpJsonFromTextarea(); }
 { const _ms = $('mcp-settings'); if (_ms) _ms.onclick = () => vscode.postMessage({ type: 'openMcpSettings' }); }
 { const _mfs = $('mcp-form-save'); if (_mfs) _mfs.onclick = () => { if (saveMcpFormServer()) showSettingsSavedToast('Saved MCP server settings.'); }; }
+{ const _mpp = $('mcp-preset-playground'); if (_mpp) _mpp.onclick = () => { applyMcpPresetPlayground(); showSettingsSavedToast('Applied MCP Playground preset.'); }; }
+{ const _mpb = $('mcp-preset-brave'); if (_mpb) _mpb.onclick = () => { applyMcpPresetBrave(); showSettingsSavedToast('Applied Brave Search MCP preset.'); }; }
+{ const _mqf = $('mcp-quick-filesystem'); if (_mqf) _mqf.onclick = () => { applyMcpPresetFilesystem(); showSettingsSavedToast('Applied filesystem MCP preset.'); }; }
+{ const _mqc = $('mcp-quick-cloud'); if (_mqc) _mqc.onclick = () => { applyMcpPresetCloudEndpoint(); showSettingsSavedToast('Applied cloud MCP preset.'); }; }
+{ const _mcqa = $('mcp-cloud-quick-add'); if (_mcqa) _mcqa.onclick = () => { if (quickAddApiKeyCloudServer()) showSettingsSavedToast('Saved cloud MCP endpoint.'); }; }
+{ const _mos = $('mcp-oauth-save'); if (_mos) _mos.onclick = () => { if (saveMcpOAuthConfig()) showSettingsSavedToast('Saved MCP OAuth settings.'); }; }
+{ const _moc = $('mcp-oauth-connect'); if (_moc) _moc.onclick = () => { if (connectMcpOAuth()) showSettingsSavedToast('Starting MCP OAuth sign-in...'); }; }
+{ const _mfl = $('mcp-form-location'); if (_mfl) _mfl.onchange = () => { clearMcpFormErrors(); maybeAutoConfigureCloudAuth(); syncMcpFormVisibility(); }; }
+{ const _mfa = $('mcp-form-auth'); if (_mfa) _mfa.onchange = () => { clearMcpFormErrors(); syncMcpFormVisibility(); }; }
+{ const _mfu = $('mcp-form-url'); if (_mfu) _mfu.oninput = () => { maybeAutoConfigureCloudAuth(); syncMcpFormVisibility(); }; }
+{
+  const _mcps = $('mcp-config-server');
+  if (_mcps) _mcps.onchange = () => {
+    const v = (_mcps.value || '').trim();
+    if (!v) {
+      clearMcpFormErrors();
+      ensureMcpFormDefaults();
+      return;
+    }
+    if (fillMcpFormFromServer(v)) showSettingsSavedToast(`Loaded MCP server "${v}".`);
+  };
+}
+{
+  const _mcpl = $('mcp-list');
+  if (_mcpl) _mcpl.onclick = (e) => {
+    const btn = e.target.closest?.('[data-mcp-load]');
+    if (!btn) return;
+    const name = btn.getAttribute('data-mcp-load') || '';
+    if (!name) return;
+    const picker = $('mcp-config-server');
+    if (picker) picker.value = name;
+    if (fillMcpFormFromServer(name)) showSettingsSavedToast(`Loaded MCP server "${name}".`);
+  };
+}
 { const _smf = $('sidebar-mcp-fetch'); if (_smf) _smf.onclick = () => requestMcpToolsAndShow(); }
 { const _smr = $('sidebar-mcp-reload'); if (_smr) _smr.onclick = () => vscode.postMessage({ type: 'reloadMcp' }); }
 { const _smif = $('sidebar-mcp-import-file'); if (_smif) _smif.onclick = () => vscode.postMessage({ type: 'importMcpJsonFile' }); }
@@ -2201,5 +3076,6 @@ $('dev-use').onclick = () => {
 };
 
 setProvider('local');
+ensureMcpFormDefaults();
 resizeInput();
 updateModeBadge();

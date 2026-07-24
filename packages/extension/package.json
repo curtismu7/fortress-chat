@@ -115,6 +115,26 @@
             }
           }
         },
+        "fortressChat.braveDirectMcp": {
+          "type": "object",
+          "default": {
+            "enabled": false,
+            "apiKey": ""
+          },
+          "description": "Local-only direct Brave MCP (stdio). Use for development/testing; avoid in shared/production configs.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable built-in Brave stdio MCP server using BRAVE_API_KEY"
+            },
+            "apiKey": {
+              "type": "string",
+              "default": "",
+              "description": "Brave API key for local direct mode. Leave empty to use process env BRAVE_API_KEY."
+            }
+          }
+        },
         "fortressChat.skillDirectories": {
           "type": "array",
           "default": [
@@ -132,6 +152,26 @@
           "type": "string",
           "default": "",
           "description": "Custom folder for local GGUF models. Each catalog model expects a subfolder (e.g. gemma-3-4b-qat/). Empty uses ~/Library/Application Support/fortress-chat/models."
+        },
+        "fortressChat.usCloudProviderAllowlist": {
+          "type": "array",
+          "default": [
+            "google",
+            "openai",
+            "anthropic",
+            "meta",
+            "meta-llama",
+            "facebook",
+            "nvidia",
+            "xai",
+            "x-ai",
+            "microsoft",
+            "amazon"
+          ],
+          "description": "Allowed cloud model slug prefixes for US-based providers. Example: [\"google\", \"openai\", \"nvidia\"].",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

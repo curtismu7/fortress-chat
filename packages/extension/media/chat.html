@@ -23,6 +23,10 @@
     </div>
     <section class="sidebar-mcp" aria-label="MCP controls">
       <div class="sidebar-mcp-title">MCP</div>
+      <label class="sidebar-mcp-picker-label" for="sidebar-mcp-server">Active server</label>
+      <select id="sidebar-mcp-server" class="sidebar-mcp-select">
+        <option value="">All MCP servers</option>
+      </select>
       <div class="sidebar-mcp-actions">
         <button type="button" id="sidebar-mcp-fetch" class="sidebar-mcp-btn">Fetch tool list</button>
         <button type="button" id="sidebar-mcp-tools" class="sidebar-mcp-btn">View tool table</button>
@@ -41,6 +45,7 @@
       <span id="active-model">Choose a model</span>
       <span class="model-chevron">▾</span>
     </button>
+    <button type="button" id="theme-toggle-btn" class="icon-btn theme-toggle-btn" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">Dark</button>
     <button type="button" id="settings-btn" class="icon-btn settings-gear-btn" title="Settings" aria-label="Open settings"><svg class="settings-gear-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.2 7.2 0 0 0-1.62-.94l-.36-2.54A.48.48 0 0 0 14 2h-4a.48.48 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.55-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.65 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.77 14.52a.49.49 0 0 0-.12.61l1.92 3.32c.13.22.4.31.64.22l2.39-.96c.5.39 1.03.7 1.62.94l.36 2.54c.05.24.25.41.48.41h4c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.55 1.62-.94l2.39.96c.24.1.51 0 .64-.22l1.92-3.32a.49.49 0 0 0-.12-.61l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg></button>
   </header>
 
@@ -125,7 +130,13 @@
         <summary>Chat</summary>
         <button type="button" id="new-chat" class="settings-block-btn">New chat</button>
         <button type="button" id="open-editor-chat" class="settings-block-btn">Open chat in editor tab</button>
-        <label class="settings-row"><input type="checkbox" id="agent-toggle" /> Agent mode</label>
+        <label class="settings-row">Mode
+          <select id="agent-mode-picker">
+            <option value="ask">Ask</option>
+            <option value="agent">Agent</option>
+            <option value="plan">Plan</option>
+          </select>
+        </label>
         <label class="settings-row">Compare model
           <select id="compare-picker"><option value="">None</option></select>
         </label>
@@ -214,38 +225,120 @@
       <details class="settings-section" id="mcp-settings-section">
         <summary>MCP servers</summary>
         <p class="settings-hint">MCP servers expose tools in <b>Agent</b> mode. For hosted test servers, enter <b>Name + URL</b> and click Save server.</p>
+        <label class="settings-row">Saved MCP server
+          <select id="mcp-config-server">
+            <option value="">(new server)</option>
+          </select>
+        </label>
         <div class="mcp-form">
-          <label class="settings-row">Name
-            <input id="mcp-form-name" placeholder="mcp-echo-test" />
-          </label>
-          <label class="settings-row">Transport
-            <select id="mcp-form-transport">
-              <option value="">Auto</option>
-              <option value="stdio">stdio</option>
-              <option value="http">http</option>
-              <option value="sse">sse</option>
-            </select>
-          </label>
-          <label class="settings-row">Command (stdio)
-            <input id="mcp-form-command" placeholder="npx" />
-          </label>
-          <label class="settings-row">Args JSON array
-            <input id="mcp-form-args" placeholder='["-y","@modelcontextprotocol/server-filesystem","/path"]' />
-          </label>
-          <label class="settings-row">URL (http/sse)
-            <input id="mcp-form-url" placeholder="https://example.com/mcp" />
-          </label>
-          <label class="settings-row">SSE message URL (optional)
-            <input id="mcp-form-message-url" placeholder="https://example.com/mcp/messages" />
-          </label>
-          <label class="settings-row">Headers JSON object (optional)
-            <input id="mcp-form-headers" placeholder='{"Authorization":"Bearer YOUR_TOKEN"}' />
-          </label>
-          <label class="settings-row">Env JSON object
-            <input id="mcp-form-env" placeholder='{"MY_ENV":"value"}' />
-          </label>
+          <div class="mcp-subsection">
+            <h4>MCP server config</h4>
+            <p class="settings-hint">Start simple: choose where your MCP server runs, then choose auth.</p>
+            <label class="settings-row">Name
+              <input id="mcp-form-name" placeholder="mcp-echo-test" />
+            </label>
+            <label class="settings-row">Run location
+              <select id="mcp-form-location">
+                <option value="cloud">Cloud (URL)</option>
+                <option value="local">Local (command)</option>
+              </select>
+            </label>
+            <label class="settings-row" id="mcp-row-command">Command (local)
+              <input id="mcp-form-command" placeholder="npx" />
+            </label>
+            <label class="settings-row" id="mcp-row-url">URL (cloud)
+              <input id="mcp-form-url" placeholder="https://example.com/mcp" />
+            </label>
+            <label class="settings-row" id="mcp-row-auth">Auth
+              <select id="mcp-form-auth">
+                <option value="none">No auth</option>
+                <option value="apiKey">API key / bearer token</option>
+                <option value="oauth">OAuth</option>
+              </select>
+            </label>
+            <label class="settings-row" id="mcp-row-api-key">API key or token
+              <input id="mcp-form-api-key" type="password" placeholder="Paste key/token" autocomplete="off" />
+            </label>
+            <label class="settings-row" id="mcp-row-api-header">Auth header
+              <select id="mcp-form-api-header">
+                <option value="authorization">Authorization: Bearer</option>
+                <option value="subscription">X-Subscription-Token</option>
+              </select>
+            </label>
+            <p id="mcp-cloud-hint" class="settings-hint" hidden></p>
+            <div id="mcp-form-errors" class="mcp-form-errors" hidden></div>
+
+            <details id="mcp-advanced" class="mcp-advanced">
+              <summary>Advanced (optional)</summary>
+              <label class="settings-row">Transport override
+                <select id="mcp-form-transport">
+                  <option value="">Auto</option>
+                  <option value="stdio">stdio</option>
+                  <option value="http">http</option>
+                  <option value="sse">sse</option>
+                </select>
+              </label>
+              <label class="settings-row">Args JSON array
+                <input id="mcp-form-args" placeholder='["-y","@modelcontextprotocol/server-filesystem","/path"]' />
+              </label>
+              <label class="settings-row">SSE message URL (optional)
+                <input id="mcp-form-message-url" placeholder="https://example.com/mcp/messages" />
+              </label>
+              <label class="settings-row">Bearer token (optional)
+                <input id="mcp-form-token" type="password" placeholder="eyJ... or Bearer eyJ..." autocomplete="off" />
+              </label>
+              <label class="settings-row">Headers JSON object (optional)
+                <input id="mcp-form-headers" placeholder='{"Authorization":"Bearer YOUR_TOKEN"}' />
+              </label>
+              <label class="settings-row">Env JSON object
+                <input id="mcp-form-env" placeholder='{"MY_ENV":"value"}' />
+              </label>
+            </details>
+
+            <div class="settings-row-inline">
+              <button type="button" id="mcp-preset-playground">Preset: MCP Playground default</button>
+              <button type="button" id="mcp-preset-brave">Preset: Brave Search (stdio)</button>
+            </div>
+            <div class="settings-row-inline">
+              <button type="button" id="mcp-quick-filesystem">Quick add local filesystem</button>
+              <button type="button" id="mcp-quick-cloud">Quick add cloud endpoint</button>
+            </div>
+            <p class="settings-hint">For token-protected cloud MCPs, use Quick add API-key endpoint and enter Name, URL, and API key.</p>
+            <div class="settings-row-inline">
+              <button type="button" id="mcp-cloud-quick-add">Quick add API-key endpoint</button>
+            </div>
+            <div class="settings-row-inline">
+              <button type="button" id="mcp-form-save">Save MCP server config</button>
+            </div>
+          </div>
+
+          <div class="mcp-subsection mcp-subsection-oauth" id="mcp-oauth-subsection">
+            <h4>MCP OAuth setup</h4>
+            <p class="settings-hint">Use this when the MCP endpoint returns <b>401</b> and needs sign-in via PingOne (or another OIDC provider).</p>
+            <p class="settings-hint">Required for Connect OAuth: <b>Name</b>, <b>OAuth authorize URL</b>, <b>OAuth token URL</b>, <b>OAuth client ID</b>.</p>
+            <label class="settings-row">OAuth authorize URL
+              <input id="mcp-form-oauth-authorize-url" placeholder="https://auth.pingone.com/{env}/as/authorize" />
+            </label>
+            <label class="settings-row">OAuth token URL
+              <input id="mcp-form-oauth-token-url" placeholder="https://auth.pingone.com/{env}/as/token" />
+            </label>
+            <label class="settings-row">OAuth client ID
+              <input id="mcp-form-oauth-client-id" placeholder="your-client-id" />
+            </label>
+            <label class="settings-row">OAuth scopes (optional)
+              <input id="mcp-form-oauth-scope" placeholder="openid profile mcp:invoke" />
+            </label>
+            <label class="settings-row">OAuth audience/resource (optional)
+              <input id="mcp-form-oauth-audience" placeholder="api://mcp-server" />
+            </label>
+            <div class="settings-row-inline">
+              <button type="button" id="mcp-oauth-save">Save OAuth config</button>
+              <button type="button" id="mcp-oauth-connect">Connect OAuth</button>
+            </div>
+          </div>
+
           <div class="settings-row-inline">
-            <button type="button" id="mcp-form-save">Save server</button>
+            <span class="settings-hint">Tip: Save first, then Connect OAuth.</span>
           </div>
           <label class="settings-row">Paste MCP JSON
             <textarea id="mcp-json-text" rows="5" placeholder='Paste either fortressChat.mcpServers array or {"servers": {...}} mcp.json'></textarea>
@@ -303,9 +396,12 @@
         <button type="button" id="settings-save-google" class="settings-section-save">Save Google settings</button>
       </details>
 
-      <details class="settings-section" hidden aria-hidden="true">
+      <details class="settings-section" id="cloud-model-policy-settings">
         <summary>Cloud models</summary>
-        <p class="settings-hint">FortressChat supports local US models and Google Gemini.</p>
+        <p class="settings-hint">Cloud model slugs are allowed when the developer is US-based.</p>
+        <p class="settings-hint">Allowed provider prefixes (from <code>fortressChat.usCloudProviderAllowlist</code>):</p>
+        <ul id="cloud-provider-list" class="settings-hint settings-provider-list"></ul>
+        <p class="settings-hint">Known non-US providers are blocked (for example DeepSeek, Qwen, Mistral, and Cohere).</p>
       </details>
 
       <details class="settings-section">
@@ -319,7 +415,7 @@
 
       <details class="settings-section" id="dev-settings" hidden aria-hidden="true">
         <summary>Developer</summary>
-        <p class="settings-hint">Developer mode is disabled. Local US models only.</p>
+        <p class="settings-hint">Developer mode is disabled. US-based model policy is enforced.</p>
       </details>
     </div>
   </aside>
@@ -341,11 +437,29 @@
     </div>
   </div>
 
+  <div id="brave-news-modal" hidden role="dialog" aria-modal="true" aria-labelledby="brave-news-modal-title">
+    <div id="brave-news-modal-scrim"></div>
+    <div class="brave-news-modal-panel">
+      <div class="brave-news-modal-head">
+        <h2 id="brave-news-modal-title">Brave News Query</h2>
+        <button type="button" id="brave-news-modal-close" class="icon-btn" aria-label="Close Brave News query picker">×</button>
+      </div>
+      <div class="brave-news-modal-body">
+        <p class="settings-hint">Pick query parameters, then insert an MCP tool call.</p>
+        <div id="brave-news-fields" class="brave-news-fields"></div>
+        <div class="brave-news-actions">
+          <button type="button" id="brave-news-insert">Use tool</button>
+          <button type="button" id="brave-news-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="policy-fatal" hidden role="alertdialog" aria-modal="true" aria-labelledby="policy-fatal-title">
     <div class="policy-fatal-card">
       <h2 id="policy-fatal-title">Not allowed</h2>
       <p id="policy-fatal-text"></p>
-      <p class="policy-fatal-hint">FortressChat supports local US models and Google Gemini only.</p>
+      <p class="policy-fatal-hint">FortressChat supports models from US-based developers only.</p>
     </div>
   </div>
 

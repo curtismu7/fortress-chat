@@ -41,7 +41,7 @@ export function hiddenLocalEntries(): PolicyEntry[] {
   return chatLocalEntries().filter((e) => e.local?.hidden);
 }
 
-/** Cloud OpenRouter models are disabled — FortressChat is local US models only. */
+/** Cloud OpenRouter models are not pre-curated here; runtime allowlist checks gate custom slugs. */
 export function openRouterEntries(): PolicyEntry[] {
   return [];
 }
@@ -97,17 +97,49 @@ const NON_US: { test: RegExp; reason: string }[] = [
   { test: /^cohere\//i, reason: 'Cohere is a Canada-based developer.' },
 ];
 
+// US-based developer prefixes that are accepted for cloud model slugs.
+export const DEFAULT_US_CLOUD_PROVIDER_ALLOWLIST = [
+  'google',
+  'openai',
+  'anthropic',
+  'meta',
+  'meta-llama',
+  'facebook',
+  'nvidia',
+  'xai',
+  'x-ai',
+  'microsoft',
+  'amazon',
+] as const;
+
+function normalizeAllowlist(prefixes?: readonly string[]): string[] {
+  if (!Array.isArray(prefixes) || prefixes.length === 0) {
+    return [...DEFAULT_US_CLOUD_PROVIDER_ALLOWLIST];
+  }
+  const normalized = prefixes
+    .map((p) => p.trim().toLowerCase().replace(/\/+$/g, ''))
+    .filter(Boolean);
+  return normalized.length ? normalized : [...DEFAULT_US_CLOUD_PROVIDER_ALLOWLIST];
+}
+
+function isUsCloudSlugAllowed(slugOrId: string, prefixes?: readonly string[]): boolean {
+  const slug = slugOrId.trim().toLowerCase();
+  const allowlist = normalizeAllowlist(prefixes);
+  return allowlist.some((prefix) => slug.startsWith(`${prefix}/`));
+}
+
 /** Build the fatal policy message shown when a non-local / non-US model is attempted. */
 export function formatPolicyFatal(reason: string, slug?: string): string {
   const detail = slug ? ` Model "${slug}" is not allowed.` : '';
-  return `${reason}${detail}\n\nFortressChat supports local US models and Google Gemini only.`;
+  return `${reason}${detail}\n\nFortressChat supports models from US-based developers (for example Google, OpenAI, NVIDIA, Meta/Facebook).`;
 }
 
-export function explainBlock(slugOrId: string): string | null {
+export function explainBlock(slugOrId: string, usCloudProviderAllowlist?: readonly string[]): string | null {
   if (loadPolicy().some((e) => (e.openrouter?.slug === slugOrId || e.id === slugOrId) && isAllowed(e))) return null;
   for (const n of NON_US) if (n.test.test(slugOrId)) return n.reason;
   if (LOCAL_US_ONLY && slugOrId.includes('/')) {
-    return 'Cloud models are not allowed. FortressChat supports local US models only.';
+    if (isUsCloudSlugAllowed(slugOrId, usCloudProviderAllowlist)) return null;
+    return 'This cloud model is not on the US-based allowlist.';
   }
-  return 'This model is not on the local US-approved list.';
+  return 'This model is not on the US-approved list.';
 }

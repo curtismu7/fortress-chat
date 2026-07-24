@@ -1,21 +1,24 @@
 # FortressChat
 
 Local + US-governed AI chat and coding agent for VS Code. Run models fully on
-your machine via llama.cpp, or use **Google Gemini** with your own API key — with
-a governance policy that blocks any non-US model.
+your machine via llama.cpp, or use approved cloud models from US-based developers
+with a governance policy that blocks non-US providers.
 
 ## Providers
 
 - **Local (private):** Google Gemma 3 and OpenAI gpt-oss via llama.cpp. Nothing
   leaves your machine. A memory guard refuses to load a model that won't fit.
-- **Google Gemini (cloud):** curated US-origin Gemini models via the [Google AI API](https://aistudio.google.com/apikey). Add your API key in **Settings → Google Gemini**. Prompts are sent to Google; less private than local — the UI labels cloud models clearly.
+- **Cloud (US allowlist):** approved US-based developer prefixes (for example
+  Google, OpenAI, Meta/Facebook, NVIDIA, Anthropic, xAI, Microsoft, Amazon).
+  Configure prefixes with `fortressChat.usCloudProviderAllowlist`.
+- **Google Gemini (cloud):** curated Gemini models via the [Google AI API](https://aistudio.google.com/apikey). Add your API key in **Settings → Google Gemini**. Prompts are sent to Google; less private than local — the UI labels cloud models clearly.
 
 ## Governance
 
-Only US-origin models are selectable or addable. Enforcement is a curated
-allow-list maintained in the app. Pasting a non-US or unsupported cloud slug is
-blocked with a plain-language reason. OpenRouter and other cloud providers are
-disabled. See `docs/superpowers/specs/2026-07-06-gemini-cloud-design.md`.
+Only US-origin models are selectable or addable. Enforcement uses a US-based
+allowlist (default prefixes are bundled and configurable). Pasting a non-US or
+unsupported cloud slug is blocked with a plain-language reason.
+See `docs/superpowers/specs/2026-07-06-gemini-cloud-design.md`.
 
 ## Install
 
