@@ -1,6 +1,6 @@
 const vscode = acquireVsCodeApi();
 const $ = (id) => document.getElementById(id);
-document.addEventListener('click', (e) => { if (e.target && e.target.id === 'banner-close') { $('banner').hidden = true; } });
+let toastIdSeq = 0;
 document.addEventListener('click', (e) => {
   const a = e.target.closest && e.target.closest('.src-link');
   if (!a) return;
@@ -101,6 +101,7 @@ function showHint(message) {
       composerHint.textContent = '';
     }
   }
+  if (text) showToast({ kind: 'hint', message: text, timeoutMs: 4500 });
 }
 
 /** Clear the soft folder hint. */
@@ -113,8 +114,61 @@ function clearHint() {
     composerHint.hidden = true;
     composerHint.textContent = '';
   }
-  const banner = $('banner');
-  if (banner) banner.classList.remove('banner--hint');
+}
+
+function removeToast(id) {
+  const el = document.querySelector(`.toast[data-toast-id="${id}"]`);
+  if (el) el.remove();
+}
+
+function clearToasts(kind) {
+  const stack = $('toast-stack');
+  if (!stack) return;
+  const nodes = kind ? stack.querySelectorAll(`.toast[data-kind="${kind}"]`) : stack.querySelectorAll('.toast');
+  nodes.forEach((n) => n.remove());
+}
+
+function showToast({ kind = 'hint', message, timeoutMs = 8000, actions = [] }) {
+  const stack = $('toast-stack');
+  if (!stack || !message) return;
+  const id = `t${++toastIdSeq}`;
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${kind}`;
+  toast.dataset.toastId = id;
+  toast.dataset.kind = kind;
+  const hasActions = Array.isArray(actions) && actions.length > 0;
+  toast.innerHTML = `
+    <div class="toast-main">
+      <div class="toast-body"><p class="toast-text"></p></div>
+      <button type="button" class="toast-close" aria-label="Dismiss">×</button>
+    </div>
+    <div class="toast-actions" ${hasActions ? '' : 'hidden'}></div>
+  `;
+  const text = toast.querySelector('.toast-text');
+  if (text) text.textContent = message;
+  const close = toast.querySelector('.toast-close');
+  if (close) close.onclick = () => removeToast(id);
+
+  if (hasActions) {
+    const actionsWrap = toast.querySelector('.toast-actions');
+    if (actionsWrap) {
+      actions.forEach((a) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'toast-action';
+        btn.textContent = a.label;
+        btn.onclick = () => {
+          a.onClick(btn, toast);
+        };
+        actionsWrap.appendChild(btn);
+      });
+    }
+  }
+
+  stack.prepend(toast);
+  if (timeoutMs > 0) {
+    window.setTimeout(() => removeToast(id), timeoutMs);
+  }
 }
 
 function isCloudProvider(m) {
@@ -1585,25 +1639,11 @@ window.addEventListener('message', (e) => {
   }
   if (m.type === 'error') {
     if (mcpToolsLoading) setMcpToolsLoading(false);
-    if (m.message) {
-      const banner = $('banner');
-      if (banner) banner.classList.remove('banner--hint');
-      $('banner-text').textContent = m.message;
-      $('banner').hidden = false;
-      setGenerating(false);
-      clearTimeout(window.__bannerTimer);
-      const retry = $('banner-retry');
-      if (!retry || retry.hidden) {
-        window.__bannerTimer = setTimeout(() => { $('banner').hidden = true; }, 12000);
-      }
-    } else { $('banner').hidden = true; }
+    if (m.message) showToast({ kind: 'error', message: String(m.message), timeoutMs: 12000 });
+    setGenerating(false);
   }
   if (m.type === 'clearBanner') {
-    $('banner').hidden = true;
-    const retry = $('banner-retry');
-    if (retry) retry.hidden = true;
-    const banner = $('banner');
-    if (banner) banner.classList.remove('banner--hint');
+    clearToasts('error');
   }
   if (m.type === 'token') appendToken(m.text);
   if (m.type === 'context') {
@@ -1886,22 +1926,24 @@ function renderRejection(r, modelId) {
       ? '<div class="rejection-tip">Tip: stop the processes below, then retry.</div>'
       : '<div class="rejection-tip">Stopping these processes may help, but you may still need a smaller model.</div>')
     : '<div class="rejection-tip">No competing llama-server process found.</div>';
-  $('banner-text').innerHTML = `${esc(msg)}${actions}${hasForeign ? `<ul class="rejection-foreign-list">${rows}</ul>` : ''}`;
-  const retry = $('banner-retry');
-  if (retry) {
-    retry.hidden = !hasForeign;
-    retry.disabled = false;
-    retry.textContent = wouldFitAfterKill ? 'Stop other models and retry' : 'Stop listed models and retry';
-    retry.onclick = () => {
-      retry.disabled = true;
-      retry.textContent = 'Stopping other models…';
-      $('banner-text').textContent = 'Stopping other llama-server processes…';
+  const detail = `${msg}\n${stripTags(actions)}${hasForeign ? `\n${stripTags(rows).replace(/\s+/g, ' ').trim()}` : ''}`;
+  const toastActions = hasForeign ? [{
+    label: wouldFitAfterKill ? 'Stop other models and retry' : 'Stop listed models and retry',
+    onClick: (btn) => {
+      btn.disabled = true;
+      btn.textContent = 'Stopping other models…';
+      showToast({ kind: 'hint', message: 'Stopping other llama-server processes…', timeoutMs: 3000 });
       vscode.postMessage({ type: 'retryModelAfterKill', pids: window.__pendingKillPids || [], modelId: window.__pendingModelId });
-    };
-  }
-  $('banner').hidden = false;
-  clearTimeout(window.__bannerTimer);
+    },
+  }] : [];
+  showToast({ kind: 'error', message: detail, timeoutMs: 15000, actions: toastActions });
   if (window.__status) renderState(window.__status);
+}
+
+function stripTags(html) {
+  const div = document.createElement('div');
+  div.innerHTML = String(html || '');
+  return (div.textContent || div.innerText || '').trim();
 }
 
 function renderChatPicker(metas, activeId) {
@@ -2717,7 +2759,7 @@ $('send').onclick = () => {
   const slash = { '/explain': 'Explain this code.', '/fix': 'Find and fix bugs in this code.', '/test': 'Write unit tests for this code.', '/refactor': 'Refactor this code without changing behavior.', '/doc': 'Add doc comments to this code.' };
   const cmd = t.split(/\s+/)[0];
   if (slash[cmd]) { const rest = t.slice(cmd.length).trim(); t = slash[cmd] + (rest ? ' ' + rest : ''); }
-  $('input').value = ''; $('banner').hidden = true; $('steps').innerHTML = ''; $('steps').hidden = true;
+  $('input').value = ''; clearToasts('error'); $('steps').innerHTML = ''; $('steps').hidden = true;
   closeSlashMenu(); closeMentionMenu(); closeActionMenu(); resetInputHistoryBrowse();
   turnReasoning = ''; lastAgentStep = ''; streaming = '';
   vscode.postMessage({ type: 'send', text: t }); if (!window.__generating) setGenerating(true); updateMeter(); resizeInput();
@@ -2781,7 +2823,6 @@ document.querySelectorAll('.run-pill').forEach((btn) => {
   };
 });
 updateModeBar();
-$('banner-close').onclick = () => { $('banner').hidden = true; };
 
 { const _sb = $('settings-btn'); if (_sb) _sb.onclick = () => openSettings(true); }
 { const _sc = $('settings-close'); if (_sc) _sc.onclick = () => closeSettings(false); }
@@ -2902,7 +2943,7 @@ $('banner-close').onclick = () => { $('banner').hidden = true; };
 { const _ssper = $('settings-save-personas'); if (_ssper) _ssper.onclick = () => { clickIfPresent('persona-save'); showSettingsSavedToast('Saved persona settings.'); }; }
 { const _sslm = $('settings-save-local-models'); if (_sslm) _sslm.onclick = () => { showModelsDirStatus('Local model folder updates immediately when you choose a folder.'); showSettingsSavedToast('Saved local model settings.'); }; }
 { const _ssg = $('settings-save-google'); if (_ssg) _ssg.onclick = () => { clickIfPresent('google-key-save'); showSettingsSavedToast('Saved Google settings.'); }; }
-{ const _ssmore = $('settings-save-more'); if (_ssmore) _ssmore.onclick = () => { const banner = $('banner'); if (banner) { banner.classList.add('banner--hint'); banner.hidden = false; } const text = $('banner-text'); if (text) text.textContent = 'More actions apply immediately; no additional save required.'; showSettingsSavedToast('Saved section settings.'); }; }
+{ const _ssmore = $('settings-save-more'); if (_ssmore) _ssmore.onclick = () => { showToast({ kind: 'hint', message: 'More actions apply immediately; no additional save required.', timeoutMs: 4500 }); showSettingsSavedToast('Saved section settings.'); }; }
 { const _psv = $('persona-save'); if (_psv) _psv.onclick = () => {
   const name = ($('persona-name')?.value || '').trim();
   const systemPrompt = ($('persona-prompt')?.value || '').trim();
