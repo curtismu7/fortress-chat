@@ -38,8 +38,13 @@ Run FortressChat as a normal macOS app window (Electron shell):
 
 ```bash
 npm install
+export FORTRESS_GOOGLE_CLIENT_ID="your-google-oauth-client-id.apps.googleusercontent.com"
 npm run desktop:dev
 ```
+
+Standalone sign-in policy:
+- Google login is required.
+- Only `@pingidentity.com` Google accounts are allowed.
 
 Build app artifacts:
 

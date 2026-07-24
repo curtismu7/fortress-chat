@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FortressChat Sign In</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f2f5f8;
+        --card: #ffffff;
+        --text: #0f172a;
+        --muted: #475569;
+        --line: #dbe4ee;
+        --accent: #0057d9;
+        --accent-hover: #0044aa;
+        --danger: #b42318;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(circle at top right, #e9f1ff, var(--bg));
+        color: var(--text);
+        font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        display: grid;
+        place-items: center;
+      }
+
+      .card {
+        width: min(92vw, 420px);
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 12px 36px rgba(2, 16, 40, 0.12);
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 22px;
+        line-height: 1.2;
+      }
+
+      .lead {
+        margin: 0 0 14px;
+        color: var(--muted);
+      }
+
+      .rule {
+        margin: 0 0 18px;
+        padding: 10px 12px;
+        border: 1px solid #c6dbff;
+        background: #f4f8ff;
+        color: #123a75;
+        border-radius: 10px;
+        font-size: 13px;
+      }
+
+      button {
+        width: 100%;
+        border: 0;
+        border-radius: 10px;
+        padding: 11px 14px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      button:hover { background: var(--accent-hover); }
+      button:disabled { opacity: 0.6; cursor: wait; }
+
+      .status {
+        margin-top: 12px;
+        min-height: 20px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .status.error { color: var(--danger); }
+      .status.ok { color: #0b7a35; }
+
+      .hint {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>Sign in to FortressChat</h1>
+      <p class="lead">Google sign-in is required for this desktop app.</p>
+      <p class="rule">Only <strong>@pingidentity.com</strong> Google accounts are allowed.</p>
+
+      <button id="signInBtn" type="button">Continue with Google</button>
+      <p id="status" class="status"></p>
+      <p class="hint">Your browser opens for Google authentication and returns to this app.</p>
+    </main>
+
+    <script>
+      const signInBtn = document.getElementById('signInBtn');
+      const statusEl = document.getElementById('status');
+
+      function setStatus(text, kind) {
+        statusEl.textContent = text || '';
+        statusEl.className = 'status' + (kind ? ' ' + kind : '');
+      }
+
+      const unlisten = window.fortressAuth.onStatus((payload) => {
+        if (!payload || typeof payload !== 'object') return;
+        const text = String(payload.message || '');
+        const state = String(payload.state || '');
+        if (state === 'error') {
+          setStatus(text || 'Sign-in failed.', 'error');
+          signInBtn.disabled = false;
+        } else if (state === 'ok') {
+          setStatus(text || 'Signed in.', 'ok');
+          signInBtn.disabled = true;
+        } else {
+          setStatus(text || 'Working…');
+          signInBtn.disabled = true;
+        }
+      });
+
+      signInBtn.addEventListener('click', async () => {
+        setStatus('Starting sign-in…');
+        signInBtn.disabled = true;
+        try {
+          await window.fortressAuth.beginLogin();
+        } catch (err) {
+          setStatus(err && err.message ? err.message : 'Could not start sign-in.', 'error');
+          signInBtn.disabled = false;
+        }
+      });
+
+      window.addEventListener('beforeunload', () => {
+        if (typeof unlisten === 'function') unlisten();
+      });
+    </script>
+  </body>
+</html>
