@@ -39,7 +39,7 @@ export function defaultPingOneMcpServer(settings: PingOneMcpSettings): McpServer
   };
 }
 
-/** Merge built-in PingOne MCP with user-configured stdio servers. User entries override by name. */
+/** Merge built-in PingOne MCP with user-configured stdio/remote servers. User entries override by name. */
 export function resolveMcpConfigs(userRaw: unknown, pingOneRaw?: unknown): McpServerConfig[] {
   const pingOne = normalizePingOneMcpSettings(pingOneRaw);
   const byName = new Map<string, McpServerConfig>();
@@ -55,13 +55,22 @@ export function resolveMcpConfigs(userRaw: unknown, pingOneRaw?: unknown): McpSe
       byName.delete(row.name);
       continue;
     }
-    if (typeof row.command !== 'string') continue;
+    const command = typeof row.command === 'string' && row.command.trim() ? row.command.trim() : undefined;
+    const url = typeof row.url === 'string' && row.url.trim() ? row.url.trim() : undefined;
+    if (!command && !url) continue;
+
     byName.set(row.name, {
       name: row.name,
-      command: row.command,
+      transport: row.transport,
+      command,
       args: Array.isArray(row.args) ? row.args.filter((a): a is string => typeof a === 'string') : undefined,
       env: row.env && typeof row.env === 'object'
         ? Object.fromEntries(Object.entries(row.env).filter(([, v]) => typeof v === 'string')) as Record<string, string>
+        : undefined,
+      url,
+      messageUrl: typeof row.messageUrl === 'string' && row.messageUrl.trim() ? row.messageUrl.trim() : undefined,
+      headers: row.headers && typeof row.headers === 'object'
+        ? Object.fromEntries(Object.entries(row.headers).filter(([, v]) => typeof v === 'string')) as Record<string, string>
         : undefined,
       builtin: row.builtin,
     });

@@ -766,6 +766,49 @@ code.inl { background: var(--vscode-textCodeBlock-background, #2a2a2a); padding:
 #persona-name { width: 100%; margin: 6px 0; }
 .prompt-item, .persona-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--fc-border); font-size: 12px; }
 .skill-item, .mcp-item { padding: 6px 0; border-bottom: 1px solid var(--fc-border); font-size: 12px; }
+.mcp-tools-list { margin-top: 6px; max-height: 220px; overflow-y: auto; border-top: 1px solid var(--fc-border); }
+.mcp-tools-head { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+#mcp-tools-search { width: 100%; }
+.mcp-tool-group { border-bottom: 1px solid var(--fc-border); padding: 8px 0; }
+.mcp-tool-group-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.mcp-tool-server { font-size: 12px; font-weight: 700; letter-spacing: .01em; }
+.mcp-tool-item { border: 1px solid var(--fc-border); border-radius: 8px; padding: 0; margin: 6px 0; background: var(--fc-bg); }
+.mcp-tool-item > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+}
+.mcp-tool-item > summary::-webkit-details-marker { display: none; }
+.mcp-tool-item[open] > summary { border-bottom: 1px solid var(--fc-border); }
+.mcp-tool-name { font-size: 12px; font-weight: 700; word-break: break-all; }
+.mcp-tool-meta { font-size: 11px; color: var(--fc-muted); }
+.mcp-tool-desc { font-size: 12px; color: var(--fc-text); padding: 8px 10px 0; line-height: 1.45; }
+.mcp-tool-actions { display: flex; gap: 8px; padding: 8px 10px 0; flex-wrap: wrap; }
+.mcp-tool-btn {
+  border: 1px solid var(--fc-border);
+  background: var(--fc-surface);
+  color: var(--fc-text);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.mcp-tool-btn:hover { border-color: var(--fc-accent); }
+.mcp-tool-schema {
+  margin: 8px 10px 10px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--fc-border);
+  background: var(--fc-surface);
+  color: var(--fc-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+  line-height: 1.45;
+}
 .skill-use { cursor: pointer; }
 .skill-use:hover { text-decoration: underline; }
 .prompt-item .pr-title-use, .persona-item .persona-use { cursor: pointer; flex: 1; }

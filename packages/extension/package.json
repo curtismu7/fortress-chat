@@ -25,7 +25,7 @@
         "fortressChat.mcpServers": {
           "type": "array",
           "default": [],
-          "description": "Additional stdio MCP servers for agent mode. The PingOne MCP server is enabled by default (see fortressChat.pingOneMcp). Disable built-ins with {\"name\":\"pingone\",\"disabled\":true}.",
+          "description": "Additional MCP servers for agent mode (stdio, HTTP, or SSE). The PingOne MCP server is enabled by default (see fortressChat.pingOneMcp). Disable built-ins with {\"name\":\"pingone\",\"disabled\":true}.",
           "items": {
             "type": "object",
             "properties": {
@@ -33,23 +33,47 @@
                 "type": "string",
                 "description": "Short label shown in the chat UI"
               },
+              "transport": {
+                "type": "string",
+                "enum": [
+                  "stdio",
+                  "http",
+                  "sse"
+                ],
+                "description": "Transport type. Defaults to stdio when command is set, otherwise http when url is set."
+              },
               "command": {
                 "type": "string",
-                "description": "Executable (e.g. npx, node, uv)"
+                "description": "Executable for stdio transport (e.g. npx, node, uv)"
               },
               "args": {
                 "type": "array",
                 "items": {
                   "type": "string"
                 },
-                "description": "Command arguments"
+                "description": "Command arguments for stdio transport"
               },
               "env": {
                 "type": "object",
                 "additionalProperties": {
                   "type": "string"
                 },
-                "description": "Extra environment variables for the server process"
+                "description": "Extra environment variables for stdio server process"
+              },
+              "url": {
+                "type": "string",
+                "description": "Base URL for remote MCP server (http/sse transport)"
+              },
+              "messageUrl": {
+                "type": "string",
+                "description": "Optional POST endpoint for SSE transport. If omitted, discovered from endpoint event."
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Optional HTTP headers for remote MCP requests"
               },
               "disabled": {
                 "type": "boolean",
@@ -57,8 +81,7 @@
               }
             },
             "required": [
-              "name",
-              "command"
+              "name"
             ]
           }
         },

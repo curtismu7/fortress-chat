@@ -190,12 +190,18 @@
 
       <details class="settings-section">
         <summary>MCP servers</summary>
-        <p class="settings-hint">Stdio MCP servers expose tools in <b>Agent</b> mode. Configure in VS Code settings.</p>
+        <p class="settings-hint">MCP servers expose tools in <b>Agent</b> mode. Configure stdio or remote servers in VS Code settings.</p>
         <div id="mcp-list" class="mcp-list"></div>
         <div class="settings-row-inline">
+          <button type="button" id="mcp-tools-fetch">Fetch tool list</button>
           <button type="button" id="mcp-reload">Reload MCP</button>
           <button type="button" id="mcp-settings">MCP settings…</button>
         </div>
+        <div class="mcp-tools-head">
+          <span id="mcp-tools-count" class="settings-hint">No MCP tools loaded</span>
+          <input id="mcp-tools-search" type="text" placeholder="Search tools by name, server, or description" autocomplete="off" />
+        </div>
+        <div id="mcp-tools-list" class="mcp-tools-list"></div>
       </details>
 
       <details class="settings-section">
