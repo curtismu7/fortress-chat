@@ -18,7 +18,6 @@
 - **Daemon stays local-only.** The extension calls OpenRouter directly (as it already calls local llama-server directly).
 - **Chat history** entries MUST validate as `{role, content}` via the existing `validateHistory`; errors are never appended to history.
 - **Dependencies:** no new runtime npm deps beyond `@fortress-chat/shared` and what Tasks 1–12 already declared. Node 20+ builtins + browser-standard `fetch` only.
-- **Commit trailer:** every commit ends with `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
 - **TDD:** logic tasks start with a failing test; webview/UI steps use the stated manual checks.
 - Work from `/Users/cmuir/Development/fortress-chat-v1`. Stage files explicitly (never `git add -A`); confirm `git branch --show-current` is `feat/v1` before each commit.
 
@@ -316,9 +315,7 @@ Expected: all shared tests PASS (governance + policy + prior catalog/messages).
 
 ```bash
 git add packages/shared/src/policy.ts packages/shared/src/governance.ts packages/shared/src/index.ts packages/shared/test/policy.test.ts packages/shared/test/governance.test.ts
-git commit -m "feat(shared): US-only governance registry and fail-closed policy guard
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(shared): US-only governance registry and fail-closed policy guard"
 ```
 
 ---
@@ -605,9 +602,7 @@ Expected: session + target + stream + prior daemon tests PASS.
 
 ```bash
 git add packages/extension/src/chat/session.ts packages/extension/src/providers/target.ts packages/extension/src/providers/stream.ts packages/extension/src/test/session.test.ts packages/extension/src/test/target.test.ts packages/extension/src/test/stream.test.ts
-git commit -m "feat(extension): typed session, provider target resolver (local), and SSE streamChat
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(extension): typed session, provider target resolver (local), and SSE streamChat"
 ```
 
 ---
@@ -721,9 +716,7 @@ Expected: esbuild produces both bundles; `tsc --noEmit` clean.
 
 ```bash
 git add packages/extension/src/providers/target.ts packages/extension/src/secrets.ts packages/extension/src/test/target.test.ts
-git commit -m "feat(extension): fail-closed OpenRouter target with US-provider pinning and SecretStorage key
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(extension): fail-closed OpenRouter target with US-provider pinning and SecretStorage key"
 ```
 
 ---
@@ -909,9 +902,7 @@ Expected: tools tests PASS; vitest does not load the real `vscode`.
 
 ```bash
 git add packages/extension/src/agent/tools.ts packages/extension/src/test/tools.test.ts packages/extension/src/test/vscode-stub.ts packages/extension/package.json
-git commit -m "feat(extension): four agent tools with workspace path confinement and diff-approval edits
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(extension): four agent tools with workspace path confinement and diff-approval edits"
 ```
 
 ---
@@ -1071,9 +1062,7 @@ Expected: loop tests PASS (3).
 
 ```bash
 git add packages/extension/src/agent/loop.ts packages/extension/src/test/loop.test.ts
-git commit -m "feat(extension): provider-generalized agent loop with 10-iteration cap and tool errors
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(extension): provider-generalized agent loop with 10-iteration cap and tool errors"
 ```
 
 ---
@@ -1455,9 +1444,7 @@ Open `packages/extension` in VS Code, press F5, open the FortressChat view. Veri
 
 ```bash
 git add packages/extension/src/chat/ChatViewProvider.ts packages/extension/media/chat.html packages/extension/media/chat.css packages/extension/media/chat.js
-git commit -m "feat(extension): governed-gallery chat webview with provider toggle, badges, and blocked add-model
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(extension): governed-gallery chat webview with provider toggle, badges, and blocked add-model"
 ```
 
 ---
@@ -1486,9 +1473,7 @@ The root `package-lock.json` is currently untracked and the `.gitignore` `.super
 
 ```bash
 git add .gitignore package-lock.json
-git commit -m "chore: commit lockfile and ignore .superpowers scratch (CI needs npm ci)
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "chore: commit lockfile and ignore .superpowers scratch (CI needs npm ci)"
 ```
 
 - [ ] **Step 3: Write the CI workflow** (`.github/workflows/ci.yml`)
@@ -1574,9 +1559,7 @@ Expected: `npm run build` clean across all three packages; `fortress-chat.vsix` 
 
 ```bash
 git add package.json .github/workflows/ci.yml README.md
-git commit -m "chore: CI (test + vsix release), README with governance docs, root build includes extension
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "chore: CI (test + vsix release), README with governance docs, root build includes extension"
 ```
 
 **Note:** Creating the public GitHub repo and pushing (`gh repo create`) is an outward-facing action — leave it to the human/controller; do NOT run it from a subagent.

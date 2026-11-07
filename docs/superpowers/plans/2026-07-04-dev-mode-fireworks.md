@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Work from `/Users/cmuir/Development/curtis-llama/fortress-chat`, branch `main`. Stage files explicitly (never `git add -A`). Commit trailer: `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
+- Work from `/Users/cmuir/Development/curtis-llama/fortress-chat`, branch `main`. Stage files explicitly (never `git add -A`).
 - The bypass lives ONLY in `resolveDevTarget`; it must NOT import or call `assertAllowed`. The guarded `resolveTarget` in `providers/target.ts` must remain unchanged and still call `assertAllowed` first.
 - Fireworks transport: `https://api.fireworks.ai/inference/v1/chat/completions`, header `authorization: Bearer <key>`, `model: <slug>`, no `provider` pin.
 - Fireworks key stored ONLY in `context.secrets` (id `fortressChat.fireworksKey`); never on disk, never posted to the webview (only a boolean `fireworksKeySet`), never committed.
@@ -149,9 +149,7 @@ Expected: dev tests pass; full extension suite still green.
 
 ```bash
 git add packages/extension/src/providers/dev.ts packages/extension/src/devPresets.ts packages/extension/src/secrets.ts packages/extension/src/test/dev.test.ts
-git commit -m "feat(extension): Fireworks dev-mode bypass core (resolveDevTarget, presets, key)
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(extension): Fireworks dev-mode bypass core (resolveDevTarget, presets, key)"
 ```
 
 ---
@@ -341,9 +339,7 @@ Manual (Extension Dev Host / installed): press `Ctrl+Alt+M` â†’ confirm dialog â
 
 ```bash
 git add packages/extension/package.json packages/extension/src/extension.ts packages/extension/src/chat/ChatViewProvider.ts packages/extension/media/chat.html packages/extension/media/chat.css packages/extension/media/chat.js
-git commit -m "feat(extension): Developer Mode toggle (Ctrl+Alt+M) with Fireworks dev section and bypass banner
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(extension): Developer Mode toggle (Ctrl+Alt+M) with Fireworks dev section and bypass banner"
 ```
 
 ---

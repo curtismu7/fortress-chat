@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Work from `/Users/cmuir/Development/curtis-llama/fortress-chat`, branch `main`. Stage explicitly. Commit trailer `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
+- Work from `/Users/cmuir/Development/curtis-llama/fortress-chat`, branch `main`. Stage explicitly.
 - No new runtime deps; no daemon or `@fortress-chat/shared` change. `context.ts` core logic must be `vscode`-free (unit-testable); the `vscode`-facing collector lives in `ChatViewProvider`.
 - File-content cap: 30_000 bytes per attached file; truncate and flag `truncated: true`.
 - `@file` mentions and Apply targets are path-confined (reuse `resolveInWorkspace` from `agent/tools.ts`).
@@ -143,9 +143,7 @@ Expected: context tests pass; full suite green.
 
 ```bash
 git add packages/extension/src/context.ts packages/extension/src/test/context.test.ts
-git commit -m "feat(extension): editor-context assembly core (mentions, cap, preamble)
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(extension): editor-context assembly core (mentions, cap, preamble)"
 ```
 
 ---
@@ -270,9 +268,7 @@ Manual: open a file → a `📄 file` chip shows; select text → a `✂ sel` ch
 
 ```bash
 git add packages/extension/src/chat/ChatViewProvider.ts packages/extension/media/chat.html packages/extension/media/chat.css packages/extension/media/chat.js
-git commit -m "feat(extension): attach active file/selection/@mentions as removable context chips
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(extension): attach active file/selection/@mentions as removable context chips"
 ```
 
 ---
@@ -386,9 +382,7 @@ Manual: get a reply with a fenced code block → it renders in a bordered box wi
 
 ```bash
 git add packages/extension/media/chat.js packages/extension/media/chat.css packages/extension/src/agent/tools.ts packages/extension/src/chat/ChatViewProvider.ts
-git commit -m "feat(extension): render markdown + code blocks with Copy/Insert/Apply-as-diff
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(extension): render markdown + code blocks with Copy/Insert/Apply-as-diff"
 ```
 
 ---
@@ -470,9 +464,7 @@ Manual: select code → right-click → FortressChat → Explain (chat sends an 
 
 ```bash
 git add packages/extension/package.json packages/extension/src/extension.ts packages/extension/src/chat/ChatViewProvider.ts packages/extension/media/chat.js
-git commit -m "feat(extension): selection right-click actions and slash commands
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(extension): selection right-click actions and slash commands"
 ```
 
 ---

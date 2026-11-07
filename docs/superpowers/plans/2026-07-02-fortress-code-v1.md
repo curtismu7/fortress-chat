@@ -21,7 +21,6 @@
 - Idle policy: no authenticated API request for **30 minutes** → daemon stops llama-server and exits.
 - Catalog: Google Gemma 3 QAT (1B/4B/12B/27B) + OpenAI gpt-oss (20B/120B) only. Sources: `google/*-qat-q4_0-gguf` and `ggml-org/gpt-oss-*-GGUF` HF repos, SHA256-pinned.
 - Dependencies allowed: `zod`; dev: `typescript`, `vitest`, `esbuild`, `@types/node`, `@types/vscode`, `@vscode/vsce`, `eslint` + `typescript-eslint`. Nothing else without a plan change.
-- All commits end with the trailer line: `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
 - TDD: every code task starts with a failing test where the code is testable; webview/UI steps use the stated manual checks instead.
 
 ## File Structure

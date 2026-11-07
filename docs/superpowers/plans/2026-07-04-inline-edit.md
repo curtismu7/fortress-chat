@@ -9,7 +9,7 @@
 **Tech Stack:** TypeScript, VS Code API, vitest. No new deps.
 
 ## Global Constraints
-- Work from `/Users/cmuir/Development/curtis-llama/fortress-chat`, branch `main`. Stage explicitly. Trailer `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
+- Work from `/Users/cmuir/Development/curtis-llama/fortress-chat`, branch `main`. Stage explicitly.
 - Route through the panel's currently-selected model via the same `assertAllowed`-gated resolver chat uses; dev mode → Fireworks. No new governance surface.
 - Output must be code-only (strip ```fences); no chat-history entry created.
 

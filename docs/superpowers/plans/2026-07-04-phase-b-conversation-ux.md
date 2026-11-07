@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Work from `/Users/cmuir/Development/curtis-llama/fortress-chat`, branch `main`. Stage explicitly. Trailer `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
+- Work from `/Users/cmuir/Development/curtis-llama/fortress-chat`, branch `main`. Stage explicitly.
 - Reasoning is **never persisted** — saved answer content is `splitThink(full).content`.
 - No new runtime deps; no daemon/`shared` change. TDD for pure modules + stream; manual for webview.
 - Provider/dev/governance routing and Phase A context stay unchanged in behavior.
